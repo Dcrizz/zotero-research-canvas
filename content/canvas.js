@@ -247,6 +247,8 @@ function render() {
   $('reflow-layout').hidden=!M.layoutKey(board);
   for(const button of $('mindmap-direction').querySelectorAll('button'))button.setAttribute('aria-pressed',String(button.dataset.direction===(board.mindmapDirection||'horizontal')));
   $('empty').hidden = !!board.nodes.length || !!board.frames?.length || !!board.edges.length;
+  if(board.mode==='matrix')$('empty').innerHTML='Choose sources in Zotero.<br/><small>Select items in the main library pane, then click + Zotero selection above, or drag them here.</small>';
+  else $('empty').innerHTML='Start with an idea.<br/><small>Add a card or bring in your Zotero selection.</small>';
   $('format-guides').replaceChildren();
   for(const guide of M.formatGuides(board)){
     const group=svg('g',{class:'format-guide format-'+guide.kind});

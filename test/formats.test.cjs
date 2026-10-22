@@ -19,3 +19,15 @@ test('literature groups leave room between source columns and cards',()=>{
   assert.ok(positions.get(c.id).y-(positions.get(a.id).y+a.height)>=60);
   assert.ok(positions.get(d.id).x-(positions.get(a.id).x+a.width)>=100);
 });
+test('concept map branches radiate around the centre without overlapping',()=>{
+  const b=M.board('Concept');b.mode='conceptmap';b.nodes=Array.from({length:13},(_,index)=>{const n=M.node(0,0,'Source '+index);n.width=260+index%3*40;n.height=180+index%4*30;return n;});
+  const positions=M.positions(b),centre=positions.get(b.nodes[0].id),quadrants=new Set();
+  for(const branch of b.nodes.slice(1)){
+    const point=positions.get(branch.id);quadrants.add((point.x<centre.x?'left':'right')+'-'+(point.y<centre.y?'top':'bottom'));
+  }
+  assert.equal(quadrants.size,4);
+  for(let i=0;i<b.nodes.length;i++)for(let j=i+1;j<b.nodes.length;j++){
+    const a=b.nodes[i],c=b.nodes[j],pa=positions.get(a.id),pc=positions.get(c.id);
+    assert.ok(pa.x+a.width<=pc.x||pc.x+c.width<=pa.x||pa.y+a.height<=pc.y||pc.y+c.height<=pa.y);
+  }
+});

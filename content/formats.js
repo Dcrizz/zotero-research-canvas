@@ -65,11 +65,19 @@
   }
   function conceptmap(board){
     const positions=new Map(),nodes=board.nodes;if(!nodes.length)return {positions,guides:[]};
-    const branches=nodes.slice(1),left=branches.filter((_,index)=>index%2===0),right=branches.filter((_,index)=>index%2===1);
-    const gap=72,columnHeight=column=>column.reduce((sum,node)=>sum+node.height+gap,0)-gap;
-    const height=Math.max(nodes[0].height,gap+Math.max(left.length?columnHeight(left):0,right.length?columnHeight(right):0));
-    const centerX=580,centerY=height/2;positions.set(nodes[0].id,{x:centerX,y:centerY-nodes[0].height/2});
-    for(const [column,x] of [[left,30],[right,centerX+nodes[0].width+270]]){let y=(height-(column.length?columnHeight(column):0))/2;for(const node of column){positions.set(node.id,{x,y});y+=node.height+gap;}}
+    const arms=[[],[],[],[]],cardGap=120,centerGap=180,horizontalGap=280;
+    nodes.slice(1).forEach((node,index)=>arms[index%4].push(node));
+    const height=arm=>arm.reduce((sum,node)=>sum+node.height+cardGap,0);
+    const upperHeight=Math.max(height(arms[0]),height(arms[1]));
+    const centerX=Math.max(360,...[...arms[0],...arms[2]].map(node=>node.width+horizontalGap));
+    const centerY=upperHeight+centerGap;
+    positions.set(nodes[0].id,{x:centerX,y:centerY});
+    for(let armIndex=0;armIndex<arms.length;armIndex++){
+      const arm=arms[armIndex],left=armIndex%2===0,upper=armIndex<2;
+      const x=left?centerX-horizontalGap-Math.max(0,...arm.map(node=>node.width)):centerX+nodes[0].width+horizontalGap;
+      let y=upper?centerY-centerGap:centerY+nodes[0].height+centerGap;
+      for(const node of arm){if(upper)y-=node.height;positions.set(node.id,{x,y});y+=upper?-cardGap:node.height+cardGap;}
+    }
     return {positions,guides:[]};
   }
   function layout(board){

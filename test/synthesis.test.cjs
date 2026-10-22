@@ -44,6 +44,16 @@ test('page-aware PDF excerpts retain a verified page and source link',()=>{
   const input=[{...sources[0],passages:[{id:'p1',origin:'PDF text · p. 6',text:documents[0].pageContent,link:{libraryID:1,key:'ABCDEFGH'},pageIndex:5}]}];
   const data={claims:[{id:'c1',source:'s0',passage:'p1',quote:documents[0].pageContent,title:'Feedback loop definition',cardType:'Definition',interpretation:'Source definition.'}],relations:[]};
   const board=S.build(M,S.verify(JSON.stringify(data),input,'conceptmap'),'conceptmap','Concept Map — Feedback loop','fixture','Feedback loop');
-  assert.equal(board.mode,'conceptmap');assert.equal(board.nodes[0].title,'Feedback loop');assert.equal(board.nodes[1].pageIndex,5);assert.match(board.nodes[1].title,/◈ Definition · Jones \(2023\) - Platform study/);assert.equal(board.nodes[1].topicHeading,'Feedback loop definition');assert.match(board.nodes[1].text,/^Feedback loop definition\n\n/);assert.equal(board.edges[0].label,'Definition');assert.deepEqual(M.validate(board),board);
-  const positions=M.positions(board);assert.ok(positions.get(board.nodes[0].id).x>positions.get(board.nodes[1].id).x);
+  assert.equal(board.mode,'conceptmap');assert.equal(board.nodes.length,1);assert.equal(board.nodes[0].pageIndex,5);assert.match(board.nodes[0].title,/◈ Definition · Jones \(2023\) - Platform study/);assert.equal(board.nodes[0].topicHeading,'Feedback loop definition');assert.match(board.nodes[0].text,/^Feedback loop definition\n\n/);assert.equal(board.edges.length,0);assert.deepEqual(M.validate(board),board);
+});
+test('concept maps centre a verified definition and link source-backed branches',()=>{
+  const data={claims:[
+    {id:'c1',source:'s1',passage:'p1',quote:sources[1].passages[0].text,title:'Audience choice matters',cardType:'Alternative',interpretation:'Audience choices qualify the account.'},
+    {id:'c2',source:'s0',passage:'p1',quote:sources[0].passages[0].text,title:'Algorithmic amplification',cardType:'Definition',interpretation:'A grounded definition of amplification.'}
+  ],relations:[]};
+  const board=S.build(M,S.verify(JSON.stringify(data),sources,'conceptmap'),'conceptmap','Concept Map','fixture','Amplification');
+  assert.equal(board.nodes.length,2);assert.equal(board.nodes[0].synthesisType,'Definition');assert.equal(board.edges.length,1);
+  assert.equal(board.edges[0].source,board.nodes[0].id);assert.equal(board.edges[0].target,board.nodes[1].id);
+  assert.equal(board.edges[0].label,'Alternative');assert.deepEqual(M.validate(board),board);
+  assert.throws(()=>S.verify(JSON.stringify({...data,claims:data.claims.slice(0,1)}),sources,'conceptmap'),/definition/);
 });
