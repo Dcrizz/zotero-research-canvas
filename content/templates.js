@@ -96,6 +96,20 @@
     board.nodes=specs.map(([title,text,x,y,colour])=>({...M.node(x,y,title,text),width:340,height:340,colour,border:'#536b69'}));
     board.edges=[[0,1,'Alternative account','#98649a'],[1,2,'Justification','#287b63'],[1,3,'Limitation','#b48539']].map(([a,b,label,colour])=>({...M.edge(board.nodes[a].id,board.nodes[b].id),sourceSide:'right',targetSide:'left',style:'straight',hierarchy:false,label,colour}));return M.validate(board);
   }
+  function blankChain(M,variant){
+    if(!['sequential','conditional'].includes(variant))throw Error('Choose a sequential or conditional chain.');
+    const board=variant==='conditional'?conditionalExample(M):createCustom(M);
+    board.nodes=board.nodes.filter(n=>!n.templateGuide);board.frames=[];
+    if(variant==='sequential')board.nodes=board.nodes.slice(0,6);
+    const ids=new Set(board.nodes.map(n=>n.id));board.edges=board.edges.filter(e=>ids.has(e.source)&&ids.has(e.target));
+    for(const [i,n] of board.nodes.entries()){
+      const conditional=condition(n)!==null;
+      n.text=(conditional?'Only if: Type conditional here\n\n':'')+'## Instructions\nType instructions here\n\n## Further instructions\nType instructions here';
+      if(variant==='conditional'&&i>1)n.text+='\n\nIf step 2: type additional instructions here';
+    }
+    if(variant==='sequential'){board.nodes[0].title='1. Step 1';board.nodes[0].text='Type initial step here';}
+    return M.validate(board);
+  }
   const revisionFor=(library,mode)=>library.modeRevisions?.[mode]??library.defaultRevision;
   function validateLibrary(M,value){
     if(!value||value.version!==1||!Array.isArray(value.custom)||value.custom.length>100||!value.defaults||typeof value.defaults!=='object')throw Error('Invalid saved canvas templates.');
@@ -144,14 +158,15 @@
     }
     if(!result.length||result.length>32)throw Error('The template needs 1–32 instruction cards after source expansion.');return result;
   }
+  const instructionLine=value=>value.replace(/^\s*#{1,6}\s+/,'').replace(/\*\*|__|\*|_/g,'').trim();
   function stepNumber(node){
     for(const value of [node.title,node.text.split(/\r?\n/,1)[0]]){
-      const match=/^\s*([1-9]\d{0,2})[.)]\s+\S/.exec(value);
+      const match=/^\s*([1-9]\d{0,2})[.)]\s+\S/.exec(instructionLine(value));
       if(match)return Number(match[1]);
     }
     return null;
   }
-  function condition(node){const first=node.text.split(/\r?\n/,1)[0].replace(/^\s*\d{1,3}[.)]\s*/, '');const match=/^\s*Only if:\s*(.{8,300})\s*$/i.exec(first);return match?match[1].trim():null;}
+  function condition(node){const first=instructionLine(node.text.split(/\r?\n/,1)[0]).replace(/^\s*\d{1,3}[.)]\s*/, '');const match=/^\s*Only if:\s*(.{8,300})\s*$/i.exec(first);return match?match[1].trim():null;}
   function sequence(board,sources){
     const slots=tasks(board,sources),numbered=new Map(),open=[];
     for(const slot of slots){const number=stepNumber(slot.node);if(number===null)open.push(slot);else{if(!numbered.has(number))numbered.set(number,[]);numbered.get(number).push(slot);}}
@@ -215,5 +230,5 @@
     if(checked.omissions?.length)result.templateOmissions=checked.omissions.map(({task,reason})=>({title:task.node.title,condition:condition(task.node),reason,source:task.source||''}));
     return M.validate(result);
   }
-  const api={formats,modes,createCustom,conditionalExample,revisionFor,empty,builtIn,defaultBoard,saveDefault,resetDefaults,validateLibrary,capture,instantiate,tasks,stepNumber,condition,sequence,prompt,verify,run,fill};root.CanvasTemplates=api;if(typeof module!=='undefined')module.exports=api;
+  const api={formats,modes,blankChain,createCustom,conditionalExample,revisionFor,empty,builtIn,defaultBoard,saveDefault,resetDefaults,validateLibrary,capture,instantiate,tasks,stepNumber,condition,sequence,prompt,verify,run,fill};root.CanvasTemplates=api;if(typeof module!=='undefined')module.exports=api;
 })(globalThis);

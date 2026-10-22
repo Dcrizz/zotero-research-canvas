@@ -5,11 +5,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '../content');
-async function openText(page){if(await page.locator('#tools-text').isVisible())return;await page.locator('.card.selected').click({button:'right'});await page.locator('[data-tool=text]').click();}
+async function openText(page){if(await page.locator('#tools-text').isVisible())return;await page.locator('.card.selected .heading').click({button:'right'});await page.locator('[data-tool=text]').click();}
 (async () => {
   const server = http.createServer((req, res) => {
     const name = req.url.split('?')[0] === '/' ? 'canvas.xhtml' : req.url.split('?')[0].slice(1);
-    if (!['canvas.xhtml', 'canvas.css', 'choices.js', 'choices.css', 'canvas.js', 'template-author.js', 'template-author-ui.js', 'objects.js', 'object-presets.js', 'objects-ui.js', 'formats.js', 'model.js', 'templates.js', 'research.js', 'workspace-tools.js', 'export.js', 'library.js', 'explorer.js', 'settings.js', 'obsidian.js', 'connections.js', 'connection-ui.js', 'counterexamples.js', 'counterexample-ui.js', 'canvas-entry.png', 'icon.png'].includes(name)) { res.writeHead(404).end(); return; }
+    if (!['canvas.xhtml', 'canvas.css', 'choices.js', 'choices.css', 'canvas.js', 'card-text.js', 'card-text-ui.js', 'card-clipboard.js', 'template-author.js', 'template-author-ui.js', 'objects.js', 'object-presets.js', 'objects-ui.js', 'formats.js', 'model.js', 'templates.js', 'research.js', 'workspace-tools.js', 'export.js', 'library.js', 'explorer.js', 'settings.js', 'obsidian.js', 'connections.js', 'connection-ui.js', 'counterexamples.js', 'counterexample-ui.js', 'canvas-entry.png', 'icon.png'].includes(name)) { res.writeHead(404).end(); return; }
     res.setHeader('Content-Type', name.endsWith('.xhtml') ? 'application/xhtml+xml' : name.endsWith('.css') ? 'text/css' : name.endsWith('.png') ? 'image/png' : 'text/javascript');
     res.end(fs.readFileSync(path.join(root, name)));
   }).listen(0, '127.0.0.1');
@@ -24,7 +24,7 @@ async function openText(page){if(await page.locator('#tools-text').isVisible())r
     await page.locator('#add').dispatchEvent('click'); await openText(page); await page.locator('#title').fill('Research question'); await page.locator('#title').press('Tab'); await page.keyboard.press('Escape');
     await openText(page); await page.locator('#text').fill('How do different sources frame this issue?'); await page.locator('#text').press('Tab'); await page.keyboard.press('Escape');
     await page.locator('#add-child').dispatchEvent('click'); await openText(page); await page.locator('#title').fill('Source evidence'); await page.locator('#title').press('Tab'); await page.keyboard.press('Escape');
-    await page.locator('.card').nth(1).click({button: 'right'});
+    await page.locator('.card').nth(1).locator('.heading').click({button: 'right'});
     const floating = await page.locator('#style-toolbar').boundingBox();
     const styledCard = await page.locator('.card').nth(1).boundingBox();
     const canvasBounds = await page.locator('#viewport').boundingBox();

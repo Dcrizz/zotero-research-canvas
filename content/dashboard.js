@@ -57,8 +57,8 @@ window.addEventListener('DOMContentLoaded',()=>{
     const button=document.createElement('button');button.type='button';button.className='canvas-tile';button.title='Open '+row.title;
     button.append(preview(board));const info=document.createElement('div');info.className='tile-info';const name=document.createElement('strong');name.textContent=row.title;
     const detail=document.createElement('small');const date=Number(row.modified)?new Date(row.modified).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'Saved locally';
-    const cards=board.nodes.filter(n=>!n.junction).length;detail.textContent=(CanvasFormats.modes[board.mode]||'Canvas')+' · '+date+' · '+cards+' card'+(cards===1?'':'s');
-    info.append(name,detail);button.append(info);button.onclick=act(()=>bridge.dashboardOpenBoard(row.id));return button;
+    const cards=board.nodes.filter(n=>!n.junction).length;detail.textContent=(row.templateID?'Saved template · ':'')+(CanvasFormats.modes[board.mode]||'Canvas')+' · '+date+' · '+cards+' card'+(cards===1?'':'s');
+    info.append(name,detail);button.append(info);button.onclick=act(()=>row.templateID?bridge.dashboardEditTemplate(board.mode,row.templateID):bridge.dashboardOpenBoard(row.id));return button;
   }
   async function renderCanvases(){
     const current=++request,host=$('canvases'),query=$('search').value.trim().toLocaleLowerCase();host.replaceChildren();host.classList.toggle('list',layout==='list');
@@ -70,16 +70,21 @@ window.addEventListener('DOMContentLoaded',()=>{
     for(const row of filtered){
       const age=now-(Number(row.modified)||0),next=age<30*86400000?'Last 30 days':age<180*86400000?'Last 6 months':'Earlier';
       if(next!==group){group=next;const label=document.createElement('h3');label.className='group-title';label.textContent=group;host.append(label);}
-      const board=await bridge.load(row.id);if(current!==request)return;host.append(tile(row,board));
+      const board=row.templateBoard||await bridge.load(row.id);if(current!==request)return;host.append(tile(row,board));
     }
     $('status').textContent='';
   }
-  function render(){renderFolders();renderCanvases().catch(fail);}
+  function render(){renderFolders();return renderCanvases().catch(fail);}
   async function refresh(){
     if(!bridge)throw Error('Canvas library is unavailable.');
-    const [next,index]=await Promise.all([bridge.list(),bridge.libraryState()]);rows=next;library=index;
+    const [next,index,saved]=await Promise.all([bridge.list(),bridge.libraryState(),bridge.listTemplates()]);
+    const visible=[];
+    for(const row of next){const draft=row.templateDraft??(await bridge.load(row.id)).templateDraft;if(!draft)visible.push(row);}
+    for(const template of saved.custom)if(template.board)visible.push({id:'saved-template-'+template.id,title:template.name,templateID:template.id,templateBoard:template.board});
+    for(const [mode,board] of Object.entries(saved.builtinOverrides||{}))visible.push({id:'saved-default-'+mode,title:'Default '+CanvasFormats.modes[mode],templateID:'builtin',templateBoard:board});
+    rows=visible;library=index;
     if(folderID&&!library.folders.some(f=>f.id===folderID))folderID=null;
-    $('library-count').textContent=rows.length+' canvas'+(rows.length===1?'':'es')+' · '+library.folders.length+' folder'+(library.folders.length===1?'':'s');render();
+    $('library-count').textContent=rows.length+' canvas'+(rows.length===1?'':'es')+' · '+library.folders.length+' folder'+(library.folders.length===1?'':'s');await render();
     if(!$('templates-shade').hidden)await refreshTemplateManager();
   }
   function renderTemplateManagerChoices(selected){

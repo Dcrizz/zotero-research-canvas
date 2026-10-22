@@ -111,3 +111,15 @@ test('freeform and mind-map custom instruction canvases work independently of fo
     assert.throws(()=>T.validateLibrary(M,{...library,defaults:{[mode]:template.id}}),/unavailable/);
   }
 });
+
+test('blank chains contain editable numbered placeholders and conditional guards without groups',()=>{
+  for(const [variant,count] of [['sequential',6],['conditional',4]]){
+    const b=T.blankChain(M,variant);assert.equal(b.nodes.length,count);assert.equal(b.frames.length,0);assert.ok(b.nodes.every(n=>!n.templateGuide&&!n.objectType&&!n.link));
+    assert.equal(T.sequence(b,sources).length,3);assert.equal(b.nodes.filter(n=>T.condition(n)).length,3);
+    assert.ok(b.edges.every(e=>b.nodes.some(n=>n.id===e.source)&&b.nodes.some(n=>n.id===e.target)));
+    assert.notEqual(T.blankChain(M,variant).nodes[0].id,b.nodes[0].id);
+  }
+  assert.throws(()=>T.blankChain(M,'unknown'));
+  assert.equal(T.condition({text:'## **Only if:** the sources explicitly discuss an alternative'}),'the sources explicitly discuss an alternative');
+  assert.equal(T.stepNumber({title:'',text:'## **2. Finding**'}),2);
+});

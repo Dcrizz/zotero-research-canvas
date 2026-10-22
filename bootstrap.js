@@ -131,6 +131,8 @@ async function startup({rootURI}) {
   };
   canvasBridge = {
     nativeNotes: true,
+    writeCanvasClipboard(text){Cc['@mozilla.org/widget/clipboardhelper;1'].getService(Ci.nsIClipboardHelper).copyString(text);},
+    readCanvasClipboard(){const transfer=Cc['@mozilla.org/widget/transferable;1'].createInstance(Ci.nsITransferable);transfer.init(null);transfer.addDataFlavor('text/plain');Cc['@mozilla.org/widget/clipboard;1'].getService(Ci.nsIClipboard).getData(transfer,Ci.nsIClipboard.kGlobalClipboard);const value={};transfer.getTransferData('text/plain',value);return value.value.QueryInterface(Ci.nsISupportsString).data;},
     directory,
     openDashboard(){
       const menu=Zotero.getMainWindow().document.getElementById('research-canvas-dashboard-menu');
@@ -259,7 +261,7 @@ async function startup({rootURI}) {
       const result = [];
       for (const p of await IOUtils.getChildren(directory)) {
         if (!p.endsWith('.json')) continue;
-        try { const b = CanvasModel.validate(await IOUtils.readJSON(p)); result.push({id: b.id, title: b.title, modified: (await IOUtils.stat(p)).lastModified}); }
+        try { const b = CanvasModel.validate(await IOUtils.readJSON(p)); result.push({id: b.id, title: b.title, templateDraft:!!b.templateDraft, modified: (await IOUtils.stat(p)).lastModified}); }
         catch (error) { Zotero.logError(error); throw Error('Cannot read board ' + p + '. It has been preserved. ' + error.message); }
       }
       const index=await this.libraryState();return result.filter(b=>includeTrash||!index.boards[b.id]?.trashedAt).sort((a, b) => a.title.localeCompare(b.title));
@@ -269,7 +271,7 @@ async function startup({rootURI}) {
       const b = CanvasModel.validate(value);
       const operation = queue.then(async () => {
         const p = file(b.id);
-        if(await IOUtils.exists(p)){
+        if(!b.templateDraft&&await IOUtils.exists(p)){
           const previous=CanvasModel.validate(await IOUtils.readJSON(p));
           const graph=value=>JSON.stringify({...value,view:null});
           if(graph(previous)!==graph(b)){
@@ -478,12 +480,14 @@ async function startup({rootURI}) {
     return {board:CanvasTemplates.fill(CanvasModel,board,checked),filled:checked.entries.length,rejected:checked.rejected,unread:items.length-available.length};
   };
   canvasBridge.dashboardOpenBoard=async id=>{const window=Zotero.getMainWindow(),win=await ensureCanvas(window);await win.CanvasApp.openBoard(id);win.focus();};
-  canvasBridge.dashboardCreateTemplate=async()=>{const library=await canvasBridge.listTemplates(),conditional=library.custom.find(row=>row.name.trim().toLocaleLowerCase()==='conditional branches example');const board=CanvasTemplates.createCustom(CanvasModel,conditional);await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id);canvasWindow.document.getElementById('fit').click();await canvasWindow.CanvasApp.flush();return board.id;};
+  canvasBridge.dashboardCreateTemplate=async()=>{await canvasWindow?.CanvasApp?.flush();const library=await canvasBridge.listTemplates(),conditional=library.custom.find(row=>row.name.trim().toLocaleLowerCase()==='conditional branches example');const board=CanvasTemplates.createCustom(CanvasModel,conditional);board.id='template-draft-new';await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id);canvasWindow.document.getElementById('fit').click();await canvasWindow.CanvasApp.flush();return board.id;};
   canvasBridge.dashboardEditTemplate=async(mode,id)=>{
+    await canvasWindow?.CanvasApp?.flush();
     if(!CanvasTemplates.modes.includes(mode)||id==='builtin'&&!CanvasTemplates.formats.includes(mode))throw Error('Choose an available template format.');
     const library=await canvasBridge.listTemplates(),custom=library.custom.find(row=>row.id===id&&row.mode===mode);
     if(id!=='builtin'&&!custom)throw Error('The selected template is unavailable.');
     const board=custom?CanvasTemplates.instantiate(CanvasModel,custom,custom.name):CanvasTemplates.defaultBoard(CanvasModel,library,mode,CanvasFormats.modes[mode]+' template');
+    board.id='template-draft-'+(custom?custom.id:mode);
     if(custom){board.templateSourceID=custom.id;board.templateSourceName=custom.name;}
     else{board.templateDefaultMode=mode;board.templateDefaultRevision=CanvasTemplates.revisionFor(library,mode);}
     await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id);return board.id;

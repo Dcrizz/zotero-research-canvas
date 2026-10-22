@@ -49,6 +49,7 @@ window.CanvasWorkspace = function (ctx) {
       const b = button(icon, () => openOption(kind), menu); b.title = label; b.setAttribute('aria-label', label); b.dataset.frameTool = kind;
       if (kind === 'colour' || kind === 'border') b.style.color = currentFrame()[kind];
     }
+    for(const [label,icon,run]of [['Copy group','⧉',()=>ctx.copyCards(currentFrame().members,[currentFrame().id])],['Paste cards','▣',()=>{const f=frameRect(currentFrame());return ctx.pasteCards({x:f.x+60,y:f.y+60});}]]){const b=button(icon,run,menu);b.title=label;b.setAttribute('aria-label',label);}
     const remove = button('×', () => { checkpoint(); getBoard().frames = getBoard().frames.filter(f => f.id !== frameID); frameID = null; closeFrameMenu(); changed(); redraw(); }, menu); remove.title = currentFrame()?.isGroup?'Ungroup (keep cards)':'Remove frame (keep cards)'; remove.setAttribute('aria-label', remove.title);
     menu.hidden = false; popover.hidden = true; redraw();
   }
@@ -232,7 +233,7 @@ window.CanvasWorkspace = function (ctx) {
   });
   for(const type of ['pointerup','pointercancel'])viewport.addEventListener(type,ev=>{if(!multiDrag)return;const d=multiDrag;multiDrag=null;marquee.hidden=true;if(viewport.hasPointerCapture(d.pointer))viewport.releasePointerCapture(d.pointer);if(!d.box)changed();redraw();});
   document.addEventListener('keydown',ev=>{
-    if(ev.target.closest('input,textarea,select')||!document.getElementById('note-panel').hidden)return;
+    if(ev.target.closest('input,textarea,select,[contenteditable=true]')||!document.getElementById('note-panel').hidden)return;
     if(ev.key==='Escape'){multiple.clear();selecting=false;updateSelectionMode();redraw();}
     if(multiple.size&&['Delete','Backspace'].includes(ev.key)){ev.preventDefault();ev.stopImmediatePropagation();deleteMultiple().catch(report);}
   },true);
