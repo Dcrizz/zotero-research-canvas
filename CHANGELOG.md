@@ -1,6 +1,6 @@
 # Changes
 
-- 0.31.1: Adds a home icon beside Zotero selection, a dashboard Templates manager with previews and per-format defaults, a Manage templates entry in Zotero settings, and editing of saved template instructions without creating duplicates. Built-in link types can be customised and reset.
+- 0.31.1: Adds a home icon beside Zotero selection, a dashboard Templates manager with previews and per-format defaults, a Manage templates entry in Zotero settings, and editing of saved template instructions without creating duplicates. Built-in link types can be customised and reset. Versioned dashboard assets prevent stale styles after updating the plugin.
 
 - 0.31.0: Adds on-demand evidence health checks, source coverage by parent Zotero work, a read-only argument walkthrough, and conditional AI template branches with saved omission explanations. Generated cards now retain their exact evidence quote for later checks.
 
