@@ -1,5 +1,7 @@
 # Changes
 
+- 0.29.1: Gives literature columns and cards more space. New source-comparison cards have provisional types, distinct colours and clearer relationship labels. PDF annotation cards show saved page labels; plain indexed PDF excerpts still indicate when page location is unavailable.
+
 - 0.29.0: Adds five structured canvas formats and horizontal/vertical mind-map layouts with direct facing parent-child links. Zotero item-menu actions create excerpt-grounded comparison or concept canvases from selected sources, with links back to notes, annotations and indexed PDFs. Generated interpretations are marked as bounded drafts.
 
 - 0.28.0: Adds a Zotero Canvas dashboard launched from Zotero's right-hand icon rail or Tools menu. Create freeform canvases, mind maps and folders; browse recent canvases with live previews, folder filters, search and grid/list views.

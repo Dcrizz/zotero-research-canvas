@@ -24,13 +24,14 @@
     const entries=[...map.entries()];if(kind==='timeline')entries.sort((a,b)=>a[0]==='Undated'?1:b[0]==='Undated'?-1:a[0].localeCompare(b[0]));
     else entries.sort((a,b)=>a[0].localeCompare(b[0]));return entries.map(([name,nodes])=>[name,name,nodes]);
   }
-  function columns(data){
+  function columns(data,kind){
     const positions=new Map(),guides=[];let x=0;
+    const literature=kind==='literature',padding=literature?34:23,rowGap=literature?80:34,columnGap=literature?100:35,top=literature?92:75;
     for(const [key,title,nodes] of data){
       if(!nodes.length)continue;
-      const width=Math.max(300,...nodes.map(n=>n.width+46)),height=Math.max(260,90+nodes.reduce((sum,n)=>sum+n.height+34,0));
-      let y=75;for(const n of nodes){positions.set(n.id,{x:x+23,y});y+=n.height+34;}
-      guides.push({x,y:0,width,height,label:title,kind:key});x+=width+35;
+      const width=Math.max(300,...nodes.map(n=>n.width+padding*2)),height=Math.max(260,top+nodes.reduce((sum,n)=>sum+n.height+rowGap,0));
+      let y=top;for(const n of nodes){positions.set(n.id,{x:x+padding,y});y+=n.height+rowGap;}
+      guides.push({x,y:0,width,height,label:title,kind:key});x+=width+columnGap;
     }
     return {positions,guides};
   }
@@ -65,7 +66,7 @@
   function layout(board){
     if(board.mode==='matrix')return matrix(board);
     if(board.mode==='process')return process(board);
-    if(structured.has(board.mode))return columns(groups(board,board.mode));
+    if(structured.has(board.mode))return columns(groups(board,board.mode),board.mode);
     return {positions:new Map(board.nodes.map(n=>[n.id,{x:n.x,y:n.y}])),guides:[]};
   }
   const api={modes,structured,layout};root.CanvasFormats=api;if(typeof module!=='undefined')module.exports=api;

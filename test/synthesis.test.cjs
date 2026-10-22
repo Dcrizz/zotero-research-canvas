@@ -7,11 +7,17 @@ const sources=[
   {id:'s1',title:'Audience study',author:'Smith',year:'2024',passages:[{id:'p1',origin:'Saved note',text:'Interviewees described actively rejecting many recommended sensational videos.',link:{libraryID:1,key:'QRSTUVWX'}}]}
 ];
 test('source synthesis verifies exact quotes and builds linked comparison cards',()=>{
-  const data={claims:[{id:'c1',source:'s0',passage:'p1',quote:sources[0].passages[0].text,title:'Algorithm amplifies sensational content',interpretation:'A reported finding in this period.'},{id:'c2',source:'s1',passage:'p1',quote:sources[1].passages[0].text,title:'Audience responses varied',interpretation:'A reported interview finding.'}],relations:[{from:'c2',to:'c1',type:'Qualifies',reason:'Audience rejection limits a deterministic reading of recommendations.'}]};
+  const data={claims:[{id:'c1',source:'s0',passage:'p1',quote:sources[0].passages[0].text,title:'Algorithm amplifies sensational content',cardType:'Finding',interpretation:'A reported finding in this period.'},{id:'c2',source:'s1',passage:'p1',quote:sources[1].passages[0].text,title:'Audience responses varied',cardType:'Limitation',interpretation:'A reported interview finding.'}],relations:[{from:'c2',to:'c1',type:'Qualifies',reason:'Audience rejection limits a deterministic reading of recommendations.'}]};
   assert.equal(S.prompt(sources,'comparison').tools.length,0);
   const verified=S.verify(JSON.stringify(data),sources,'comparison');const board=S.build(M,verified,'comparison','Comparison','fixture');
-  assert.equal(board.mode,'literature');assert.equal(board.nodes.length,2);assert.equal(board.edges.length,1);assert.equal(board.nodes[0].annotationKey,'IJKLMNOP');assert.equal(board.edges[0].label,'Qualifies');assert.deepEqual(M.validate(board),board);
+  assert.equal(board.mode,'literature');assert.equal(board.nodes.length,2);assert.equal(board.edges.length,1);assert.equal(board.nodes[0].annotationKey,'IJKLMNOP');assert.equal(board.nodes[0].synthesisType,'Finding');assert.match(board.nodes[0].title,/Finding/);assert.notEqual(board.nodes[0].colour,board.nodes[1].colour);assert.equal(board.edges[0].label,'Qualifies finding');assert.deepEqual(M.validate(board),board);
   data.claims[1].quote='A fabricated observation.';assert.equal(S.verify(JSON.stringify(data),sources,'comparison').rejected,2);
+});
+test('annotation page labels are preserved without inventing pages for plain PDF text',()=>{
+  assert.equal(S.annotationOrigin('12'),'PDF annotation · p. 12');
+  assert.equal(S.annotationOrigin('iv'),'PDF annotation · p. iv');
+  assert.equal(S.annotationOrigin(''),'PDF annotation');
+  assert.match(S.prompt(sources,'comparison').messages[0].content,/cardType/);
 });
 test('concept canvases require verified source passages and produce a directional mind map',()=>{
   const input=[{...sources[0],passages:[{...sources[0].passages[0],text:'The algorithmic feedback loop is a repeated interaction between recommendations and audience responses.'},{id:'p2',origin:'Indexed PDF text (page unavailable)',text:'Repeated recommendations shape which videos users encounter during later sessions.',link:{libraryID:1,key:'ABCDEFGH'}}]}];

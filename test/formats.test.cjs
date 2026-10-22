@@ -11,3 +11,11 @@ test('structured formats retain cards and produce distinct editable placements',
   }
   b.mode='canvas';assert.deepEqual(b,original);
 });
+test('literature groups leave room between source columns and cards',()=>{
+  const b=M.board('Sources');b.mode='literature';
+  const a=M.node(0,0,'First'),c=M.node(0,0,'Second'),d=M.node(0,0,'Third');
+  a.organization={literatureGroup:'A'};c.organization={literatureGroup:'A'};d.organization={literatureGroup:'B'};
+  b.nodes=[a,c,d];const positions=M.positions(b);
+  assert.ok(positions.get(c.id).y-(positions.get(a.id).y+a.height)>=60);
+  assert.ok(positions.get(d.id).x-(positions.get(a.id).x+a.width)>=100);
+});

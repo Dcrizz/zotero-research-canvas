@@ -99,7 +99,7 @@ async function startup({rootURI}) {
       if(!attachment.isFileAttachment())continue;
       await attachment.loadDataType('childItems');
       for(const annotation of attachment.getAnnotations().slice(0,16)){
-        if(annotation&&!annotation.deleted)add([annotation.annotationText,annotation.annotationComment].filter(Boolean).join(' '),'PDF annotation',{libraryID:attachment.libraryID,key:attachment.key},annotation.key);
+        if(annotation&&!annotation.deleted)add([annotation.annotationText,annotation.annotationComment].filter(Boolean).join(' '),CanvasSynthesis.annotationOrigin(annotation.annotationPageLabel),{libraryID:attachment.libraryID,key:attachment.key},annotation.key);
         if(passages.length>=9)break;
       }
       if(attachment.attachmentContentType!=='application/pdf')continue;

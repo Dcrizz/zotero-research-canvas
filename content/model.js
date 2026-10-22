@@ -35,6 +35,7 @@
         || (n.annotationKey !== undefined && !/^[A-Z0-9]{8}$/.test(n.annotationKey))
         || (n.sourceUnavailable !== undefined && typeof n.sourceUnavailable !== 'boolean')
         || (n.synthesis !== undefined && typeof n.synthesis !== 'boolean')
+        || (n.synthesisType !== undefined && !['Claim','Finding','Counterargument','Proves','Disproves','Limitation'].includes(n.synthesisType))
         || (n.pattern !== undefined && !['solid', 'dashed', 'dotted'].includes(n.pattern))
         || (n.fillMode !== undefined && !['filled', 'partial', 'outline'].includes(n.fillMode))
         || (n.kind === 'note' && !n.link)

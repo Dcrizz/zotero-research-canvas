@@ -324,6 +324,7 @@ function render() {
     if (n.shape === 'ellipse') card.classList.add('oval-card');
     card.oncontextmenu = ev => { ev.preventDefault(); ev.stopPropagation(); openStyles('node', n.id); };
     const heading = html('div'); heading.className = 'heading'; heading.textContent = n.title; heading.title = n.title;
+    if(n.synthesisType){card.classList.add('synthesis-card');heading.style.backgroundColor=n.border;heading.style.borderColor=n.border;}
     let cardHeading = heading;
     if (n.kind === 'note' || n.kind === 'annotation') {
       card.classList.add('note-card'); if (noteMenuID === n.id) card.classList.add('actions-open');
