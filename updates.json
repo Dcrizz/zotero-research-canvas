@@ -56,6 +56,17 @@
               "strict_max_version": "10.0.*"
             }
           }
+        },
+        {
+          "version": "0.29.4",
+          "update_link": "https://github.com/Dcrizz/zotero-research-canvas/releases/download/v0.29.4/zotero-canvas-0.29.4.xpi",
+          "update_hash": "sha256:f74b45c631e517d25c34b10c462b7f5ee550a22d5799d26ec0c9b1465b370b90",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "10.0",
+              "strict_max_version": "10.0.*"
+            }
+          }
         }
       ]
     }

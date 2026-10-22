@@ -462,7 +462,7 @@ function onMainWindowLoad({window}) {
     action.addEventListener('command', () => sendToCanvas(window, async () => collection ? window.ZoteroPane.getSelectedCollection().getChildItems() : window.ZoteroPane.getSelectedItems()).catch(error => { Zotero.logError(error); Services.prompt.alert(window, 'Send to Canvas', error.message); }));
     popup.append(action); menuCleanups.push(() => { popup.removeEventListener('popupshowing', update); action.remove(); });
     if(!collection){
-      for(const [kind,label] of [['comparison','Compare selected sources on a canvas...'],['concept','Explain a concept on a canvas...'],['conceptmap','Create a Concept Map from selected sources...']]){
+      for(const [kind,label] of [['comparison','Compare selected sources on a canvas...'],['concept','Explain a concept as a mind map...'],['conceptmap','Create a Concept Map from selected sources...']]){
         const synth=doc.createXULElement('menuitem');synth.id='research-canvas-'+kind;synth.setAttribute('label',label);
         const updateSynth=()=>{const selected=window.ZoteroPane.getSelectedItems();synth.disabled=kind==='comparison'?selected.length<2||selected.length>8||selected.some(item=>!item.isRegularItem()):kind==='conceptmap'?selected.length<1||selected.length>8||selected.some(item=>!item.isRegularItem()):selected.length!==1||!selected[0].isRegularItem();};
         popup.addEventListener('popupshowing',updateSynth);synth.addEventListener('command',()=>createSourceCanvas(window,kind).catch(error=>{Zotero.logError(error);Services.prompt.alert(window,'Zotero Canvas',error.message);}));

@@ -68,6 +68,17 @@ test('mind maps arrange generations horizontally or vertically with facing direc
   assert.ok(M.edgePath(b,edge,{...a,...vertical.get(a.id)},{...child,...vertical.get(child.id)}).includes(' L '));
   b.mindmapDirection='diagonal';assert.throws(()=>M.validate(b));
 });
+test('mind map and concept map positions can be moved without changing freeform placement',()=>{
+  const b=fixture(),freeform=b.nodes.map(n=>({x:n.x,y:n.y}));b.mode='mindmap';
+  const auto=M.positions(b).get(b.nodes[1].id);b.nodes[1].layoutOverrides={'mindmap-horizontal':{x:auto.x+80,y:auto.y+35}};
+  assert.deepEqual(M.positions(b).get(b.nodes[1].id),{x:auto.x+80,y:auto.y+35});
+  b.mindmapDirection='vertical';assert.notDeepEqual(M.positions(b).get(b.nodes[1].id),b.nodes[1].layoutOverrides['mindmap-horizontal']);
+  b.mode='conceptmap';const centre=M.positions(b).get(b.nodes[0].id),left=M.positions(b).get(b.nodes[1].id);
+  assert.ok(left.x<centre.x);assert.equal(M.edgeGeometry(b,b.edges[0],{...b.nodes[0],...centre},{...b.nodes[1],...left}).sourceSide,'left');
+  b.nodes[1].layoutOverrides.conceptmap={x:centre.x+800,y:centre.y};assert.deepEqual(M.positions(b).get(b.nodes[1].id),{x:centre.x+800,y:centre.y});
+  assert.deepEqual(M.validate(b),b);b.mode='canvas';assert.deepEqual(b.nodes.map(n=>({x:n.x,y:n.y})),freeform);
+  b.nodes[1].layoutOverrides.conceptmap={x:Infinity,y:0};assert.throws(()=>M.validate(b));
+});
 test('layout handles cycles, multiple parents, cross-links and disconnected nodes without data loss', () => {
   const b = fixture(); b.edges.push(M.edge(b.nodes[1].id, b.nodes[0].id), M.edge(b.nodes[2].id, b.nodes[1].id)); b.nodes.push(M.node());
   const before = M.clone(b); const positions = M.layout(b); assert.equal(positions.size, b.nodes.length); assert.deepEqual(b, before);

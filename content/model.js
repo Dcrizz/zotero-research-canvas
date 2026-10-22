@@ -38,6 +38,8 @@
         || (n.synthesis !== undefined && typeof n.synthesis !== 'boolean')
         || (n.synthesisType !== undefined && !['Claim','Finding','Counterargument','Proves','Disproves','Limitation','Definition','Theory','Alternative','Justification','Example'].includes(n.synthesisType))
         || (n.topicHeading !== undefined && (typeof n.topicHeading!=='string'||n.topicHeading.length>100))
+        || (n.layoutOverrides !== undefined && (!n.layoutOverrides || typeof n.layoutOverrides!=='object' || Array.isArray(n.layoutOverrides)
+          || Object.entries(n.layoutOverrides).some(([key,position])=>!['mindmap-horizontal','mindmap-vertical','conceptmap'].includes(key)||!validPoint(position))))
         || (n.pattern !== undefined && !['solid', 'dashed', 'dotted'].includes(n.pattern))
         || (n.fillMode !== undefined && !['filled', 'partial', 'outline'].includes(n.fillMode))
         || (n.kind === 'note' && !n.link)
@@ -128,7 +130,12 @@
     }
     return result;
   }
-  function positions(b) { return b.mode === 'mindmap' ? layout(b) : F.structured.has(b.mode) ? F.layout(b).positions : new Map(b.nodes.map(n => [n.id, {x: n.x, y: n.y}])); }
+  function layoutKey(b){return b.mode==='mindmap'?'mindmap-'+(b.mindmapDirection||'horizontal'):b.mode==='conceptmap'?'conceptmap':null;}
+  function positions(b) {
+    const result=b.mode==='mindmap'?layout(b):F.structured.has(b.mode)?F.layout(b).positions:new Map(b.nodes.map(n=>[n.id,{x:n.x,y:n.y}]));
+    const key=layoutKey(b);if(key)for(const n of b.nodes){const override=n.layoutOverrides?.[key];if(override)result.set(n.id,override);}
+    return result;
+  }
   function formatGuides(b){return F.structured.has(b.mode)?F.layout(b).guides:[];}
   const validPoint = p => p && finite(p.x,-1e7,1e7) && finite(p.y,-1e7,1e7);
   function endpoint(e,end,nodes){return e[end]===null?{...e[end+'Point'],width:0,height:0}:nodes.get(e[end]);}
@@ -144,8 +151,8 @@
     return {x: n.x + (side === 'left' ? 0 : side === 'right' ? n.width : n.width / 2), y: n.y + (side === 'top' ? 0 : side === 'bottom' ? n.height : n.height / 2)};
   }
   function edgeGeometry(b,e,a,c){
-    if(b.mode!=='mindmap'||e.source===null||e.target===null)return {style:e.style,sourceSide:e.sourceSide||'right',targetSide:e.targetSide||'left',routePoints:e.routePoints||[]};
-    if(e.hierarchy){
+    if(!['mindmap','conceptmap'].includes(b.mode)||e.source===null||e.target===null)return {style:e.style,sourceSide:e.sourceSide||'right',targetSide:e.targetSide||'left',routePoints:e.routePoints||[]};
+    if(b.mode==='mindmap'&&e.hierarchy&&!a.layoutOverrides?.[layoutKey(b)]&&!c.layoutOverrides?.[layoutKey(b)]){
       const vertical=b.mindmapDirection==='vertical',forward=vertical?a.y<=c.y:a.x<=c.x;
       return {style:'straight',sourceSide:vertical?(forward?'bottom':'top'):(forward?'right':'left'),targetSide:vertical?(forward?'top':'bottom'):(forward?'left':'right'),routePoints:[]};
     }
@@ -154,7 +161,7 @@
       const p=anchor(a,pair[0]),q=anchor(c,pair[1]),distance=(p.x-q.x)**2+(p.y-q.y)**2;
       return distance<best.distance?{pair,distance}:best;
     },{pair:pairs[0],distance:Infinity}).pair;
-    return {style:'straight',sourceSide,targetSide,routePoints:[]};
+    return {style:b.mode==='mindmap'?'straight':e.style,sourceSide:e.sourceSide||sourceSide,targetSide:e.targetSide||targetSide,routePoints:b.mode==='mindmap'?[]:e.routePoints||[]};
   }
   function edgePath(b,e,a,c){const route=edgeGeometry(b,e,a,c);return path(a,c,route.style,route.sourceSide,route.targetSide,route.routePoints);}
   function path(a, c, style, sourceSide = 'right', targetSide = 'left', routePoints = []) {
@@ -222,7 +229,7 @@
   function defaultMeanings() {
     return [['supports','Supporting link','SL ✅','#287b63','solid'],['contradicts','Critical link','❌CL','#b34747','dashed'],['extends','Extends','Extends','#4679a3','solid'],['example','Example of','Example of','#967536','dotted']].map(([id,title,label,colour,pattern])=>meaning(id,title,{label,colour,pattern,style:'curved',thickness:3,arrow:'end',hierarchy:false}));
   }
-  const api = {setDefaults, clone, board, node, edge, endpoint, extraRects, formatGuides, child, validate, layout, positions, path, anchor, edgeGeometry, edgePath, droppedIDs, labelPalette, resize, bounds, meaning, meaningFields, defaultMeanings, annotationLabel, referenceTitle};
+  const api = {setDefaults, clone, board, node, edge, endpoint, extraRects, formatGuides, layoutKey, child, validate, layout, positions, path, anchor, edgeGeometry, edgePath, droppedIDs, labelPalette, resize, bounds, meaning, meaningFields, defaultMeanings, annotationLabel, referenceTitle};
   if (typeof module !== 'undefined') module.exports = api;
   else root.CanvasModel = api;
 })(globalThis);

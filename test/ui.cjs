@@ -81,6 +81,14 @@ async function openText(page){if(await page.locator('#tools-text').isVisible())r
     assert.equal((await get()).edges.length, 2);
     await page.locator('#mode-toggle').click(); await page.locator('[data-for=mode] [data-value=mindmap]').click();
     assert.ok((await page.locator('.edge-main').first().getAttribute('d')).includes(' L '));
+    const beforeMove=await page.locator('.card .heading').first().boundingBox();
+    await page.mouse.move(beforeMove.x+15,beforeMove.y+10);await page.mouse.down();await page.mouse.move(beforeMove.x+55,beforeMove.y+30,{steps:6});await page.mouse.up();
+    assert.ok((await get()).nodes[0].layoutOverrides?.['mindmap-horizontal']);
+    await page.locator('#mode-toggle').click();await page.locator('[data-for=mode] [data-value=conceptmap]').click();await page.locator('#fit').click();
+    const conceptHeading=await page.locator('.card .heading').first().boundingBox();
+    await page.mouse.move(conceptHeading.x+15,conceptHeading.y+10);await page.mouse.down();await page.mouse.move(conceptHeading.x+55,conceptHeading.y+30,{steps:6});await page.mouse.up();
+    assert.ok((await get()).nodes[0].layoutOverrides?.conceptmap);
+    await page.locator('#reflow-layout').click();assert.equal((await get()).nodes[0].layoutOverrides?.conceptmap,undefined);
     await page.locator('#mode-toggle').click(); await page.locator('[data-for=mode] [data-value=canvas]').click();
     // Select an edge at a point on the SVG path and format it.
     const edgePoint = await page.locator('.edge-hit').first().evaluate(el => { const p = el.getPointAtLength(el.getTotalLength() * .5), m = el.getScreenCTM(); return {x: p.x * m.a + m.e, y: p.y * m.d + m.f}; });
