@@ -28,6 +28,18 @@ test('connector appearance is optional for older boards and validates new styles
     const copy = M.clone(b); copy.edges[0][field] = value; assert.throws(() => M.validate(copy));
   }
 });
+test('junctions split connectors and accept branches from cards or other junctions',()=>{
+  const b=fixture(),original=b.edges[0];original.label='Supports';original.colour='#287b63';original.style='straight';
+  const first=M.splitEdge(b,original.id,{x:300,y:120}),dot=first.board.nodes.find(n=>n.id===first.junctionID);
+  assert.equal(dot.junction,true);assert.equal(first.board.edges.length,b.edges.length+1);
+  assert.equal(first.board.edges.find(e=>e.id===original.id).source,dot.id);
+  assert.equal(first.board.edges.find(e=>e.id===original.id).label,'Supports');
+  assert.equal(first.board.edges.find(e=>e.id===first.upstreamID).label,'');
+  const second=M.splitEdge(first.board,b.edges[1].id,{x:310,y:320});
+  const cross=M.edge(first.junctionID,second.junctionID);cross.hierarchy=false;second.board.edges.push(cross);
+  assert.deepEqual(M.validate(second.board),second.board);
+  assert.deepEqual(M.validate(b),b);
+});
 test('label colour inherits a darker connector colour with accessible text contrast', () => {
   const luminance = hex => { const values = [1, 3, 5].map(i => { const s = parseInt(hex.slice(i, i + 2), 16) / 255; return s <= .04045 ? s / 12.92 : ((s + .055) / 1.055) ** 2.4; }); return values[0] * .2126 + values[1] * .7152 + values[2] * .0722; };
   for (const hex of ['#ffffff', '#000000', '#007f78', '#ff6666', '#f1ce4c', '#697b7a', '#a0a0a0', '#808080']) {

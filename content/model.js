@@ -17,17 +17,47 @@
   function edge(source, target) {
     return {id: id(), source, target, style: 'curved', colour: '#697b7a', thickness: 2, arrow: 'end', label: '', hierarchy: true};
   }
+  function junction(x, y, colour = '#697b7a') {
+    return {id: id(), x: x - 11, y: y - 11, width: 22, height: 22, title: 'Connector junction', text: '', colour, border: '#ffffff', borderWidth: 2, fontSize: 12, link: null, junction: true, shape: 'ellipse'};
+  }
+  function splitEdge(b, edgeID, at) {
+    if (!validPoint(at)) throw Error('Choose a point on the connector.');
+    const original = b.edges.find(e => e.id === edgeID);
+    if (!original) throw Error('Connector unavailable.');
+    const next = clone(b), downstream = next.edges.find(e => e.id === edgeID);
+    const dot = junction(at.x, at.y, downstream.colour);
+    const source=next.nodes.find(n=>n.id===downstream.source),target=next.nodes.find(n=>n.id===downstream.target);
+    const layout=positions(b),start=source?{...layout.get(source.id),width:source.width,height:source.height}:b.edges.find(e=>e.id===edgeID).sourcePoint;
+    const end=target?{...layout.get(target.id),width:target.width,height:target.height}:b.edges.find(e=>e.id===edgeID).targetPoint;
+    const dx=(end.x+(end.width||0)/2)-(start.x+(start.width||0)/2),dy=(end.y+(end.height||0)/2)-(start.y+(start.height||0)/2);
+    const forward=Math.abs(dx)>=Math.abs(dy)?(dx>=0?['left','right']:['right','left']):(dy>=0?['top','bottom']:['bottom','top']);
+    if(b.mode==='timeline'){
+      dot.junctionRole=source?.junctionRole==='spine'&&target?.junctionRole==='spine'?'spine':'branch';
+      if(dot.junctionRole==='spine')dot.organization={...target.organization};
+    }
+    const upstream = {...clone(downstream), id: id(), target: dot.id, targetSide: forward[0], label: '', arrow: downstream.arrow === 'start' || downstream.arrow === 'both' ? 'start' : 'none'};
+    delete upstream.targetPoint; delete upstream.routePoints; delete upstream.aiEvidence;
+    downstream.source = dot.id; downstream.sourceSide = forward[1];
+    downstream.arrow = downstream.arrow === 'both' ? 'end' : downstream.arrow === 'start' ? 'none' : downstream.arrow;
+    delete downstream.sourcePoint; delete downstream.routePoints;
+    if(dot.junctionRole==='spine')next.nodes.splice(next.nodes.findIndex(n=>n.id===target.id),0,dot);else next.nodes.push(dot);
+    next.edges.push(upstream);
+    return {board: validate(next), junctionID: dot.id, upstreamID: upstream.id, downstreamID: downstream.id};
+  }
   function validate(b) {
     if (!b || b.version !== 1 || typeof b.id !== 'string' || typeof b.title !== 'string' || !Object.hasOwn(F.modes,b.mode)
       || !Array.isArray(b.nodes) || !Array.isArray(b.edges) || b.nodes.length > 5000 || b.edges.length > 20000
       || !b.view || !finite(b.view.x, -1e7, 1e7) || !finite(b.view.y, -1e7, 1e7) || !finite(b.view.zoom, .2, 3)) throw Error('Invalid board format or unsupported version.');
     if(b.appearance!==undefined&&(!b.appearance||!colour(b.appearance.background)||!colour(b.appearance.gridColour)||!finite(b.appearance.gridSize,8,100)||typeof b.appearance.showGrid!=='boolean'))throw Error('Invalid canvas appearance.');
     if(b.mindmapDirection!==undefined&&!['horizontal','vertical'].includes(b.mindmapDirection))throw Error('Invalid mind map direction.');
+    if(b.templateDraft!==undefined&&typeof b.templateDraft!=='boolean')throw Error('Invalid template state.');
     if (b.filters !== undefined && (!b.filters || ['tag','author','year','itemType','colourFamily'].some(k => typeof b.filters[k] !== 'string') || !['dim','hide'].includes(b.filters.mode))) throw Error('Invalid filters.');
     const ids = new Set();
     for (const n of b.nodes) {
       if (!n || typeof n.id !== 'string' || ids.has(n.id) || typeof n.title !== 'string' || typeof n.text !== 'string'
-        || !finite(n.x, -1e7, 1e7) || !finite(n.y, -1e7, 1e7) || !finite(n.width, n.objectType?24:140, 1200) || !finite(n.height, n.objectType?24:100, 1200)
+        || !finite(n.x, -1e7, 1e7) || !finite(n.y, -1e7, 1e7) || !finite(n.width, n.junction?16:n.objectType?24:140, 1200) || !finite(n.height, n.junction?16:n.objectType?24:100, 1200)
+        || (n.junction !== undefined && (n.junction !== true || n.kind || n.objectType || n.link || n.text))
+        || (n.junctionRole !== undefined && (!n.junction || !['spine','branch'].includes(n.junctionRole)))
         || !colour(n.colour) || !colour(n.border) || !finite(n.borderWidth, 0, 12) || !finite(n.fontSize, 10, 40)
         || (n.kind !== undefined && !['note', 'reference', 'annotation', 'canvas'].includes(n.kind))
         || (n.kind === 'canvas' && (!/^[a-zA-Z0-9-]{1,80}$/.test(n.canvasID)||typeof n.embedded!=='boolean'))
@@ -229,7 +259,7 @@
   function defaultMeanings() {
     return [['supports','Supporting link','SL ✅','#287b63','solid'],['contradicts','Critical link','❌CL','#b34747','dashed'],['extends','Extends','Extends','#4679a3','solid'],['example','Example of','Example of','#967536','dotted']].map(([id,title,label,colour,pattern])=>meaning(id,title,{label,colour,pattern,style:'curved',thickness:3,arrow:'end',hierarchy:false}));
   }
-  const api = {setDefaults, clone, board, node, edge, endpoint, extraRects, formatGuides, layoutKey, child, validate, layout, positions, path, anchor, edgeGeometry, edgePath, droppedIDs, labelPalette, resize, bounds, meaning, meaningFields, defaultMeanings, annotationLabel, referenceTitle};
+  const api = {setDefaults, clone, board, node, edge, junction, splitEdge, endpoint, extraRects, formatGuides, layoutKey, child, validate, layout, positions, path, anchor, edgeGeometry, edgePath, droppedIDs, labelPalette, resize, bounds, meaning, meaningFields, defaultMeanings, annotationLabel, referenceTitle};
   if (typeof module !== 'undefined') module.exports = api;
   else root.CanvasModel = api;
 })(globalThis);

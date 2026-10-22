@@ -23,6 +23,7 @@ async function startup({rootURI}) {
   Services.scriptloader.loadSubScript(rootURI + 'content/synthesis.js', this);
   Services.scriptloader.loadSubScript(rootURI + 'content/ai-provider.js', this);
   Services.scriptloader.loadSubScript(rootURI + 'content/model.js', this);
+  Services.scriptloader.loadSubScript(rootURI + 'content/templates.js', this);
   Services.scriptloader.loadSubScript(rootURI + 'content/library.js', this);
   const directory = PathUtils.join(Zotero.DataDirectory.dir, 'research-canvas');
   await IOUtils.makeDirectory(directory, {ignoreExisting: true});
@@ -156,6 +157,15 @@ async function startup({rootURI}) {
       return this.connectionAIRequest(CanvasConnections.prompt(sources,excluded),jobID);
     },
     async getSettings(){const path=PathUtils.join(directory,'settings','preferences.json');return await IOUtils.exists(path)?CanvasSettings.validate(await IOUtils.readJSON(path)):CanvasSettings.defaults();},
+    async listTemplates(){const path=PathUtils.join(directory,'settings','templates.json');return await IOUtils.exists(path)?CanvasTemplates.validateLibrary(CanvasModel,await IOUtils.readJSON(path)):CanvasTemplates.empty();},
+    saveTemplate(template,makeDefault=false){
+      if(typeof makeDefault!=='boolean')throw Error('Invalid template preference.');
+      const operation=queue.then(async()=>{const library=await this.listTemplates(),existing=library.custom.filter(row=>row.id!==template.id);library.custom=[...existing,template];if(makeDefault)library.defaults[template.mode]=template.id;
+        const next=CanvasTemplates.validateLibrary(CanvasModel,library),dir=PathUtils.join(directory,'settings');await IOUtils.makeDirectory(dir,{ignoreExisting:true});const path=PathUtils.join(dir,'templates.json');await IOUtils.writeJSON(path,next,{tmpPath:path+'.tmp',backupFile:path+'.bak'});return next;});
+      queue=operation.catch(error=>Zotero.logError(error));return operation;
+    },
+    updateTemplateDefault(mode,id){const operation=queue.then(async()=>{const library=await this.listTemplates();library.defaults[mode]=id;const next=CanvasTemplates.validateLibrary(CanvasModel,library),path=PathUtils.join(directory,'settings','templates.json');await IOUtils.makeDirectory(PathUtils.parent(path),{ignoreExisting:true});await IOUtils.writeJSON(path,next,{tmpPath:path+'.tmp',backupFile:path+'.bak'});return next;});queue=operation.catch(error=>Zotero.logError(error));return operation;},
+    deleteTemplate(id){const operation=queue.then(async()=>{const library=await this.listTemplates(),index=library.custom.findIndex(row=>row.id===id);if(index<0)throw Error('Template unavailable.');const [removed]=library.custom.splice(index,1);if(library.defaults[removed.mode]===id)library.defaults[removed.mode]='builtin';const next=CanvasTemplates.validateLibrary(CanvasModel,library),path=PathUtils.join(directory,'settings','templates.json');await IOUtils.writeJSON(path,next,{tmpPath:path+'.tmp',backupFile:path+'.bak'});return next;});queue=operation.catch(error=>Zotero.logError(error));return operation;},
     saveSettings(value){const settings=CanvasSettings.validate(value);const operation=queue.then(async()=>{const dir=PathUtils.join(directory,'settings');await IOUtils.makeDirectory(dir,{ignoreExisting:true});const path=PathUtils.join(dir,'preferences.json');await IOUtils.writeJSON(path,settings,{tmpPath:path+'.tmp',backupFile:path+'.bak'});CanvasModel.setDefaults(settings);canvasWindow?.CanvasApp?.updateDefaults(settings);});queue=operation.catch(error=>Zotero.logError(error));return operation;},
     openSettings(){Zotero.Utilities.Internal.openPreferences('research-canvas-settings');},
     chooseObsidianDirectory(window=canvasWindow){return new Promise(resolve=>{const picker=Cc['@mozilla.org/filepicker;1'].createInstance(Ci.nsIFilePicker);picker.init(window.browsingContext,'Choose an export folder inside your Obsidian vault',Ci.nsIFilePicker.modeGetFolder);picker.open(result=>resolve(result===Ci.nsIFilePicker.returnCancel?null:picker.file.path));});},
@@ -393,12 +403,24 @@ async function startup({rootURI}) {
     await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id);
     return {id:board.id,claims:checked.claims.length,links:board.edges.length,rejected:checked.rejected,unread:items.length-available.length,passages:available.reduce((count,source)=>count+source.passages.length,0)};
   };
+  canvasBridge.fillTemplate=async(board,focus='')=>{
+    CanvasModel.validate(board);if(!board.templateDraft)throw Error('Open a template canvas before filling it with AI.');
+    const items=Zotero.getMainWindow().ZoteroPane.getSelectedItems();if(items.length<1||items.length>8||items.some(item=>!item.isRegularItem()))throw Error('Select 1–8 regular Zotero sources in the main library pane first.');
+    const sources=[];for(const [index,item] of items.entries())sources.push(await synthesisSource(item,index,'',focus));
+    const available=sources.filter(source=>source.passages.length);if(!available.length)throw Error('The selected sources have no readable saved notes, annotations or indexed PDF text.');
+    const response=await canvasBridge.connectionAIRequest(CanvasTemplates.prompt(board,available,focus),'template-'+Services.uuid.generateUUID());
+    const checked=CanvasTemplates.verify(response.text,board,available);
+    return {board:CanvasTemplates.fill(CanvasModel,board,checked),filled:checked.entries.length,rejected:checked.rejected,unread:items.length-available.length};
+  };
   canvasBridge.dashboardOpenBoard=async id=>{const window=Zotero.getMainWindow(),win=await ensureCanvas(window);await win.CanvasApp.openBoard(id);win.focus();};
-  canvasBridge.dashboardCreateBoard=async(title,mode,folderID=null)=>{
+  canvasBridge.dashboardCreateBoard=async(title,mode,folderID=null,templateID=null)=>{
     if(!Object.hasOwn(CanvasFormats.modes,mode)||typeof title!=='string'||!title.trim()||title.length>200)throw Error('Invalid canvas details.');
     if(folderID!==null&&!(await canvasBridge.libraryState()).folders.some(f=>f.id===folderID))throw Error('Folder unavailable.');
-    const board=CanvasModel.board(title.trim());board.mode=mode;
-    if(mode==='conceptmap'){const centre=CanvasModel.node(0,0,title.trim(),'Add source cards around this concept.');centre.width=290;centre.height=150;centre.colour='#e0eee7';centre.border='#287b63';board.nodes.push(centre);}
+    const library=await canvasBridge.listTemplates(),chosen=templateID||library.defaults[mode]||'builtin';
+    const custom=chosen==='builtin'?null:library.custom.find(row=>row.id===chosen&&row.mode===mode);
+    if(chosen!=='builtin'&&!custom)throw Error('The selected canvas template is unavailable.');
+    const board=CanvasTemplates.formats.includes(mode)?chosen==='builtin'?CanvasTemplates.builtIn(CanvasModel,mode,title.trim()):CanvasTemplates.instantiate(CanvasModel,custom,title.trim()):CanvasModel.board(title.trim());
+    board.mode=mode;
     await canvasBridge.save(board);
     if(folderID)await canvasBridge.organise({op:'moveBoard',id:board.id,folderID});
     await canvasBridge.dashboardOpenBoard(board.id);return board.id;

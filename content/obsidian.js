@@ -39,7 +39,7 @@
       M.formatGuides(board).forEach((guide,index)=>nodes.push({id:'format-'+index,type:'group',label:guide.label,color:guide.kind==='critical'?'3':'5',x:Math.round(guide.x),y:Math.round(guide.y),width:Math.round(guide.width),height:Math.round(guide.height)}));
       for(const n of board.nodes){
         const p=positions.get(n.id),out={id:n.id,x:Math.round(p.x),y:Math.round(p.y),width:Math.round(n.width),height:Math.round(n.height),color:n.colour};
-        if(n.objectType==='file'){const path=prefix+'/Assets/'+safeName(n.id)+'-'+safeName(n.objectData.name);files.push({path,base64:n.objectData.base64});Object.assign(out,{type:'file',file:path});}else if(n.objectType==='library'||n.objectType==='wireframe'){const path=prefix+'/Assets/'+safeName(n.title)+'-'+safeName(n.id)+'.svg';files.push({path,text:root.CanvasObjects.svg(n)});Object.assign(out,{type:'file',file:path});warnings.add('Wireframes and library objects export as SVG images; edit their components in Zotero Canvas.');}else if(n.objectType==='table'){Object.assign(out,{type:'text',text:'# '+md(n.title)+'\n\n'+root.CanvasObjects.markdown(n)});}else if(n.kind==='canvas'){
+        if(n.junction){Object.assign(out,{type:'text',text:'●'});warnings.add('Connector junctions export as small text nodes in Obsidian Canvas.');}else if(n.objectType==='file'){const path=prefix+'/Assets/'+safeName(n.id)+'-'+safeName(n.objectData.name);files.push({path,base64:n.objectData.base64});Object.assign(out,{type:'file',file:path});}else if(n.objectType==='library'||n.objectType==='wireframe'){const path=prefix+'/Assets/'+safeName(n.title)+'-'+safeName(n.id)+'.svg';files.push({path,text:root.CanvasObjects.svg(n)});Object.assign(out,{type:'file',file:path});warnings.add('Wireframes and library objects export as SVG images; edit their components in Zotero Canvas.');}else if(n.objectType==='table'){Object.assign(out,{type:'text',text:'# '+md(n.title)+'\n\n'+root.CanvasObjects.markdown(n)});}else if(n.kind==='canvas'){
           const target=paths.get(n.canvasID);if(target){if(n.embedded)Object.assign(out,{type:'file',file:target});else Object.assign(out,{type:'text',text:'['+md(n.title)+'](<'+encodeURI(target)+'>)'});}else{Object.assign(out,{type:'text',text:'# '+md(n.title)+'\n\nLinked canvas is unavailable or in Trash.'});warnings.add('Some linked canvases were unavailable.');}
         }else if(n.link){
           const key=[n.kind,n.link.libraryID,n.link.key,n.annotationKey||''].join('-');let path=sourceFiles.get(key);
@@ -47,7 +47,7 @@
           Object.assign(out,{type:'file',file:path});
         }else Object.assign(out,{type:'text',text:'# '+md(n.title)+(n.text?'\n\n'+n.text:'')});
         nodes.push(out);
-        if(n.fontSize!==15||n.shape&&n.shape!=='rounded'||n.borderWidth!==2||n.pattern&&n.pattern!=='solid')warnings.add('Custom shapes, borders and font sizes use Obsidian styling.');
+        if(!n.junction&&(n.fontSize!==15||n.shape&&n.shape!=='rounded'||n.borderWidth!==2||n.pattern&&n.pattern!=='solid'))warnings.add('Custom shapes, borders and font sizes use Obsidian styling.');
       }
       const placed=new Map(board.nodes.map(n=>[n.id,{...n,...positions.get(n.id)}]));
       for(const e of board.edges){

@@ -32,6 +32,9 @@ const bridge = window.arguments?.[0] || {
   async loadSnapshot(id,name){const row=JSON.parse(localStorage.getItem('research-canvas-history-'+id)||'[]').find(r=>r.name===name);if(!row)throw Error('Snapshot unavailable.');return M.validate(row.board);},
   async listMeanings() { return JSON.parse(localStorage.getItem('research-canvas-meanings') || '[]'); },
   async saveMeanings(values) { localStorage.setItem('research-canvas-meanings',JSON.stringify(values)); },
+  async listTemplates(){return CanvasTemplates.validateLibrary(M,JSON.parse(localStorage.getItem('research-canvas-templates')||JSON.stringify(CanvasTemplates.empty())));},
+  async saveTemplate(template,makeDefault=false){const library=await this.listTemplates();library.custom=[...library.custom.filter(row=>row.id!==template.id),template];if(makeDefault)library.defaults[template.mode]=template.id;localStorage.setItem('research-canvas-templates',JSON.stringify(CanvasTemplates.validateLibrary(M,library)));},
+  async fillTemplate(){throw Error('AI template filling is available when installed in Zotero.');},
   async selected() { throw Error('Zotero selection is available when installed in Zotero.'); },
   async open() { throw Error('Open linked items from the installed Zotero plugin.'); }
 };
@@ -110,6 +113,17 @@ function renderMeanings() {
 function edgeMiddle(id) {
   const line = [...$('edges').querySelectorAll('.edge-hit')].find(el => el.dataset.edge === id);
   return line ? line.getPointAtLength(line.getTotalLength() / 2) : null;
+}
+function edgePoint(id, near) {
+  const line=[...$('edges').querySelectorAll('.edge-hit')].find(el=>el.dataset.edge===id);
+  if(!line)throw Error('Connector is no longer visible.');
+  const length=line.getTotalLength();let closest=line.getPointAtLength(length/2),distance=Infinity;
+  for(let i=1;i<100;i++){const p=line.getPointAtLength(length*i/100),d=(p.x-near.x)**2+(p.y-near.y)**2;if(d<distance){distance=d;closest=p;}}
+  return {x:closest.x,y:closest.y};
+}
+function addJunction(edgeID,near,saveHistory=true){
+  const at=edgePoint(edgeID,near);if(saveHistory)checkpoint();
+  const result=M.splitEdge(board,edgeID,at);board=result.board;changed();render();select('node',result.junctionID);return result.junctionID;
 }
 function positionLabelEditor() {
   if (!labelDraft) return;
@@ -247,6 +261,8 @@ function render() {
   $('reflow-layout').hidden=!M.layoutKey(board);
   for(const button of $('mindmap-direction').querySelectorAll('button'))button.setAttribute('aria-pressed',String(button.dataset.direction===(board.mindmapDirection||'horizontal')));
   $('empty').hidden = !!board.nodes.length || !!board.frames?.length || !!board.edges.length;
+  $('template-save').hidden=!CanvasTemplates.formats.includes(board.mode)||!board.templateDraft;
+  $('template-fill').hidden=!CanvasTemplates.formats.includes(board.mode)||!board.templateDraft;
   if(board.mode==='matrix')$('empty').innerHTML='Choose sources in Zotero.<br/><small>Select items in the main library pane, then click + Zotero selection above, or drag them here.</small>';
   else $('empty').innerHTML='Start with an idea.<br/><small>Add a card or bring in your Zotero selection.</small>';
   $('format-guides').replaceChildren();
@@ -279,7 +295,7 @@ function render() {
     if (selection?.id === e.id) $('edges').append(svg('path', {d, class: 'edge-line', 'data-filter-edge': e.id, stroke: '#70b7a8', 'stroke-width': e.thickness + 7, opacity: .6}));
     const hit = svg('path', {d, class: 'edge-hit', 'data-edge': e.id});
     hit.addEventListener('pointerdown', ev => { if (ev.button !== 0) return; ev.stopPropagation(); select('edge', e.id); });
-    hit.addEventListener('contextmenu', ev => { ev.preventDefault(); ev.stopPropagation(); openStyles('edge', e.id, {x: ev.clientX, y: ev.clientY}); });
+    hit.addEventListener('contextmenu', ev => { ev.preventDefault(); ev.stopPropagation(); openStyles('edge', e.id, {x: ev.clientX, y: ev.clientY, world: point(ev)}); });
     $('edges').append(line);
     if (e.fillMode === 'outline') $('edges').append(svg('path', {d, class: 'edge-line edge-hollow', stroke: '#f0f2ed', 'stroke-width': e.thickness, ...appearance}));
     $('edges').append(hit);
@@ -308,7 +324,7 @@ function render() {
       const pill = html('div'); pill.className = 'edge-pill'; pill.textContent = e.label; pill.title = e.label;pill.style.whiteSpace='normal';pill.style.overflowWrap='anywhere';pill.style.overflow='visible';
       const palette = M.labelPalette(e.colour); Object.assign(pill.style, {backgroundColor: palette.background, color: palette.foreground, borderColor: palette.border}); label.append(pill);const height=Math.max(32,pill.scrollHeight);label.setAttribute('height',height);label.setAttribute('y',middle.y-height/2);
       label.addEventListener('pointerdown', ev => { if (ev.button !== 0) return; ev.stopPropagation(); select('edge', e.id); }); $('edges').append(label);
-      label.addEventListener('contextmenu', ev => { ev.preventDefault(); ev.stopPropagation(); openStyles('edge', e.id, {x: ev.clientX, y: ev.clientY}); });
+      label.addEventListener('contextmenu', ev => { ev.preventDefault(); ev.stopPropagation(); openStyles('edge', e.id, {x: ev.clientX, y: ev.clientY, world: point(ev)}); });
     }
   }
   for (const n of nodes.values()) {
@@ -324,6 +340,13 @@ function render() {
     Object.assign(card.style, {left: n.x + 'px', top: n.y + 'px', width: n.width + 'px', height: n.height + 'px', backgroundColor: n.colour, borderColor: n.border, borderWidth: n.borderWidth + 'px', fontSize: n.fontSize + 'px'});
     card.style.backgroundColor = n.fillMode === 'outline' ? 'transparent' : n.colour + (n.fillMode === 'partial' ? '59' : ''); card.style.borderStyle = n.pattern || 'solid';
     card.style.borderRadius = n.shape === 'rectangle' ? '0' : n.shape === 'ellipse' ? '50%' : '9px';
+    if(n.junction){
+      card.classList.add('junction-card');card.title='Connector junction: drag to connect; right-click to delete';
+      card.oncontextmenu=ev=>{ev.preventDefault();ev.stopPropagation();openStyles('node',n.id);};
+      card.onpointerdown=ev=>{if(ev.button!==0)return;ev.preventDefault();ev.stopPropagation();select('node',n.id);checkpoint();gesture={type:'connect',id:n.id,side:'right',start:point(ev),pointer:ev.pointerId};$('viewport').setPointerCapture(ev.pointerId);};
+      if(!card.isConnected)$('cards').append(card);
+      continue;
+    }
     if (n.shape === 'ellipse') card.classList.add('oval-card');
     card.oncontextmenu = ev => { ev.preventDefault(); ev.stopPropagation(); openStyles('node', n.id); };
     const heading = html('div'); heading.className = 'heading'; heading.textContent = n.title; heading.title = n.title;
@@ -457,7 +480,7 @@ function openStyles(kind, id, anchor = null) {
   updateVisualChoices();
   $('style-popover').hidden = true;
   const bar = $('style-toolbar'); bar.replaceChildren();
-  for (const [key, title, path] of [...toolSpecs[kind],...(kind==='node'&&CanvasFormats.structured.has(board.mode)?[['organize','Place in view','M4 5h16 M4 12h16 M4 19h16 M8 3v18']]:[]),...(kind==='node'&&selected().objectType==='table'?[['table','Edit table','M3 4h18v16H3z M3 9h18 M9 4v16 M15 4v16']]:[]),...(kind==='node'&&selected().counterexampleEvidence?[['counterevidence','View source explanation','M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h5']]:[]),...(kind==='edge'&&selected().aiEvidence?[['evidence','View connection explanation','M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h5']]:[]),['delete','Delete selection','M4 6h16 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7']]) {
+  for (const [key, title, path] of [...(kind==='node'&&selected().junction?[]:toolSpecs[kind]),...(kind==='edge'?[['junction','Add junction at this point','M12 3v18 M3 12h18 M8 8a4 4 0 1 0 8 8a4 4 0 1 0-8-8']]:[]),...(kind==='node'&&!selected().junction&&CanvasFormats.structured.has(board.mode)?[['organize','Place in view','M4 5h16 M4 12h16 M4 19h16 M8 3v18']]:[]),...(kind==='node'&&selected().objectType==='table'?[['table','Edit table','M3 4h18v16H3z M3 9h18 M9 4v16 M15 4v16']]:[]),...(kind==='node'&&selected().counterexampleEvidence?[['counterevidence','View source explanation','M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h5']]:[]),...(kind==='edge'&&selected().aiEvidence?[['evidence','View connection explanation','M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h5']]:[]),['delete','Delete selection','M4 6h16 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7']]) {
     const button = html('button'); button.type = 'button'; button.dataset.tool = key;
     button.title = title; button.setAttribute('aria-label', title); button.setAttribute('aria-expanded', 'false');
     if (key === 'fill' || key === 'stroke') button.style.setProperty('--swatch', selected().colour);
@@ -465,6 +488,7 @@ function openStyles(kind, id, anchor = null) {
     icon.append(svg('path', {d: path, fill: 'none', stroke: 'currentColor', 'stroke-width': 1.7, 'stroke-linecap': 'round', 'stroke-linejoin': 'round'})); button.append(icon);
     button.addEventListener('click', () => {
       if(key==='table'){const id=selected().id;hideStyles();objectTools.editTable(id);return;}
+      if(key==='junction'){const id=selected().id,near=styleAnchor?.world||edgeMiddle(id);hideStyles();addJunction(id,near);return;}
       if(key==='delete'){act(deleteSelection)();return;}
       if(key==='counterevidence'){workspace.showCounterexampleEvidence(selected());hideStyles();return;}
       if(key==='evidence'){workspace.showConnectionEvidence(selected());hideStyles();return;}
@@ -683,7 +707,37 @@ async function history(direction) {
   const from = direction === 'undo' ? undo : redo, to = direction === 'undo' ? redo : undo;
   if (!from.length) return; to.push(M.clone(board)); board = from.pop(); selection = null; changed(); render(); inspector();
 }
+let templateAction=null;
+function openTemplateDialog(action){
+  templateAction=action;$('template-dialog-title').textContent=action==='save'?'Save canvas template':'Fill template with AI';
+  $('template-dialog-help').textContent=action==='save'?'Edit the cards and their AI instructions first. This saves a reusable, source-free template for this format.':'Select 1–8 regular Zotero sources in the main library pane. AI will replace each supported instruction with a sourced answer; unsupported branches will be omitted.';
+  $('template-name-row').hidden=action!=='save';$('template-focus-row').hidden=action!=='fill';$('template-default-row').hidden=action!=='save';
+  $('template-confirm').textContent=action==='save'?'Save template':'Fill cards';$('template-name').required=action==='save';
+  $('template-name').value='';$('template-focus').value='';$('template-default').checked=false;$('template-dialog-status').textContent='';$('template-dialog-shade').hidden=false;
+  (action==='save'?$('template-name'):$('template-focus')).focus();
+}
+function closeTemplateDialog(){$('template-dialog-shade').hidden=true;templateAction=null;}
+async function submitTemplateDialog(){
+  const action=templateAction,active=board;if(!action)return;
+  $('template-confirm').disabled=true;$('template-dialog-status').textContent=action==='fill'?'Reading selected sources and checking excerpts…':'';
+  try{
+    finishLabel();await saveInlineNotes();await flush();if(board!==active)throw Error('The canvas changed. Reopen the template action.');
+    if(action==='save'){
+      if(!bridge.saveTemplate)throw Error('Template storage is unavailable.');
+      const template=CanvasTemplates.capture(M,board,$('template-name').value);
+      await bridge.saveTemplate(template,$('template-default').checked);closeTemplateDialog();status('Template saved for '+CanvasFormats.modes[board.mode]);
+    }else{
+      const result=await bridge.fillTemplate(M.clone(board),$('template-focus').value);
+      if(board!==active)throw Error('The canvas changed during AI generation. No cards were replaced.');
+      checkpoint();board=M.validate(result.board);changed();render();fit();await flush();closeTemplateDialog();status(result.filled+' template cards filled; '+result.rejected+' unsupported AI entries excluded.');
+    }
+  }catch(error){$('template-dialog-status').textContent=error.message;report(error);}
+  finally{$('template-confirm').disabled=false;}
+}
 function bind() {
+  $('template-save').onclick=()=>openTemplateDialog('save');$('template-fill').onclick=()=>openTemplateDialog('fill');$('template-cancel').onclick=closeTemplateDialog;
+  $('template-dialog-shade').onclick=event=>{if(event.target===$('template-dialog-shade'))closeTemplateDialog();};
+  $('template-dialog').onsubmit=event=>{event.preventDefault();submitTemplateDialog().catch(report);};
   function choices(container, field, rows, kind = 'edge') {
     for (const [value, title, path] of rows) {
       const button = html('button'); button.type = 'button'; button.dataset.field = field; button.dataset.value = value; button.title = title; button.setAttribute('aria-label', title);
@@ -869,19 +923,24 @@ function bind() {
       // Handles sit above ports; ignore them while finding the drop destination.
       $('handles').style.display = 'none';
       const element = document.elementFromPoint(ev.clientX, ev.clientY), target = element?.closest('.card')?.dataset.id;
+      const targetEdge=!target&&document.elementsFromPoint(ev.clientX,ev.clientY).find(el=>el.matches('.edge-hit'))?.dataset.edge;
       $('handles').style.display = '';
       const node = board.nodes.find(n => n.id === target), p = point(ev), ps = M.positions(board);
       const side = node && (element.closest('.port')?.dataset.side || ['left', 'right', 'top', 'bottom'].sort((a, b) => { const aa = M.anchor({...node, ...ps.get(node.id)}, a), bb = M.anchor({...node, ...ps.get(node.id)}, b); return Math.hypot(p.x - aa.x, p.y - aa.y) - Math.hypot(p.x - bb.x, p.y - bb.y); })[0]);
       const edge = g.type === 'reconnect' && board.edges.find(e => e.id === g.id);
       const other = edge ? edge[g.end === 'source' ? 'target' : 'source'] : g.id;
-      if (node && target !== other && ev.type !== 'pointercancel') {
+      if(targetEdge&&targetEdge!==g.id&&(!edge||targetEdge!==edge.id)){
+        const junctionID=addJunction(targetEdge,p,false);
+        if(edge){const current=board.edges.find(e=>e.id===edge.id);current[g.end]=junctionID;delete current[g.end+'Point'];current[g.end+'Side']='left';current.hierarchy=false;connected=current;}
+        else{const created=M.edge(g.id,junctionID);created.sourceSide=g.side;created.targetSide='left';created.hierarchy=false;board.edges.push(created);connected=created;}
+      } else if (node && target !== other && ev.type !== 'pointercancel') {
         if (edge) { edge[g.end] = target; delete edge[g.end+'Point']; edge[g.end + 'Side'] = side;edge.hierarchy=g.originalHierarchy; connected = edge; }
         else { const created = M.edge(g.id, target); created.sourceSide = g.side; created.targetSide = side; board.edges.push(created); connected = created; }
       } else if(ev.type!=='pointercancel'&&!node){
-        if(g.type==='connect'&&Math.hypot(p.x-g.start.x,p.y-g.start.y)*board.view.zoom<6){createChild(board.nodes.find(n=>n.id===g.id),g.side);}
+        if(g.type==='connect'&&Math.hypot(p.x-g.start.x,p.y-g.start.y)*board.view.zoom<6){if(board.nodes.find(n=>n.id===g.id)?.junction)undo.pop();else createChild(board.nodes.find(n=>n.id===g.id),g.side);}
         else if(edge){edge[g.end]=null;edge[g.end+'Point']={x:p.x,y:p.y};edge.hierarchy=false;}
         else{const created=M.edge(g.id,null);created.sourceSide=g.side;created.targetPoint={x:p.x,y:p.y};created.hierarchy=false;created.style='elbow';board.edges.push(created);selection={kind:'edge',id:created.id};}
-      } else if(ev.type!=='pointercancel'&&g.type==='connect'&&target===g.id&&Math.hypot(p.x-g.start.x,p.y-g.start.y)*board.view.zoom<6){createChild(board.nodes.find(n=>n.id===g.id),g.side);}else undo.pop();
+      } else if(ev.type!=='pointercancel'&&g.type==='connect'&&target===g.id&&Math.hypot(p.x-g.start.x,p.y-g.start.y)*board.view.zoom<6&&!board.nodes.find(n=>n.id===g.id)?.junction){createChild(board.nodes.find(n=>n.id===g.id),g.side);}else undo.pop();
     }
     if ($('viewport').hasPointerCapture(g.pointer)) $('viewport').releasePointerCapture(g.pointer);
     changed(); render(); inspector();
@@ -953,7 +1012,7 @@ async function drawCanvasPreview(n,body){
   const name=html('strong');name.textContent=data.title;body.append(name);if(!n.embedded)return;
   const positions=M.positions(data),bounds=data.nodes.length||data.edges.length?M.bounds([...data.nodes.map(n=>({...n,...positions.get(n.id)})),...M.extraRects(data)]):{x:0,y:0,width:200,height:150},image=svg('svg',{viewBox:`${bounds.x-30} ${bounds.y-40} ${Math.max(200,bounds.width+60)} ${Math.max(150,bounds.height+80)}`,class:'canvas-thumbnail','aria-label':'Preview of '+data.title});
   for(const edge of data.edges){const map=new Map(data.nodes.map(n=>[n.id,{...n,...positions.get(n.id)}]));const a=M.endpoint(edge,'source',map),b=M.endpoint(edge,'target',map);image.append(svg('path',{d:M.edgePath(data,edge,a,b),fill:'none',stroke:edge.colour,'stroke-width':edge.thickness}));}
-  for(const node of data.nodes){const pos=positions.get(node.id);if(node.objectType){image.append(svg('image',{x:pos.x,y:pos.y,width:node.width,height:node.height,href:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(CanvasObjects.svg(node))}));continue;}image.append(svg('rect',{x:pos.x,y:pos.y,width:node.width,height:node.height,rx:8,fill:node.colour,stroke:node.border,'stroke-width':2}));const text=svg('text',{x:pos.x+10,y:pos.y+25,fill:'#253d3b','font-size':16});text.textContent=node.title.slice(0,60);image.append(text);}
+  for(const node of data.nodes){const pos=positions.get(node.id);if(node.junction){image.append(svg('circle',{cx:pos.x+node.width/2,cy:pos.y+node.height/2,r:node.width/2,fill:node.colour,stroke:'#ffffff','stroke-width':2}));continue;}if(node.objectType){image.append(svg('image',{x:pos.x,y:pos.y,width:node.width,height:node.height,href:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(CanvasObjects.svg(node))}));continue;}image.append(svg('rect',{x:pos.x,y:pos.y,width:node.width,height:node.height,rx:8,fill:node.colour,stroke:node.border,'stroke-width':2}));const text=svg('text',{x:pos.x+10,y:pos.y+25,fill:'#253d3b','font-size':16});text.textContent=node.title.slice(0,60);image.append(text);}
   body.append(image);if(!data.nodes.length){const p=html('p');p.textContent='Empty canvas';body.append(p);}
 }
 const embedRefresh=setInterval(()=>{if(!ready||document.hidden)return;for(const n of board.nodes.filter(n=>n.kind==='canvas')){const body=[...$('cards').children].find(c=>c.dataset.id===n.id)?.querySelector('.body');if(body)drawCanvasPreview(n,body).catch(report);}},2500);

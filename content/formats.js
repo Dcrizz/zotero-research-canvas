@@ -55,6 +55,23 @@
     }
     return {positions,guides};
   }
+  function timeline(board){
+    if(!board.nodes.some(n=>n.junction))return columns(groups(board,'timeline'),'timeline');
+    const positions=new Map(),guides=[];
+    const dots=board.nodes.filter(n=>n.junction&&n.junctionRole!=='branch').sort((a,b)=>(a.organization?.timelineDate||'').localeCompare(b.organization?.timelineDate||''));
+    let x=100;
+    for(const dot of dots){
+      const branches=board.edges.filter(e=>e.source===dot.id||e.target===dot.id).map(e=>board.nodes.find(n=>n.id===(e.source===dot.id?e.target:e.source))).filter(n=>n&&!n.junction);
+      const width=Math.max(340,...branches.map(n=>n.width+90));
+      positions.set(dot.id,{x:x+width/2-dot.width/2,y:370});
+      let upper=100,lower=445;
+      for(const node of branches){const above=upper<=lower-345;positions.set(node.id,{x:x+(width-node.width)/2,y:above?upper:lower});if(above)upper+=node.height+40;else lower+=node.height+40;}
+      guides.push({x,y:0,width,height:Math.max(680,lower+60),label:dot.organization?.timelineDate||'Date',kind:'timeline'});
+      x+=width+90;
+    }
+    for(const n of board.nodes)if(!positions.has(n.id)){positions.set(n.id,n.junction?{x:n.x,y:n.y}:{x,y:500});if(!n.junction)x+=Math.max(300,n.width+60);}
+    return {positions,guides};
+  }
   function process(board){
     const nodes=board.nodes.map((node,index)=>({node,index})).sort((a,b)=>(a.node.organization?.processStep??a.index+1)-(b.node.organization?.processStep??b.index+1)||a.index-b.index);
     const positions=new Map(),guides=[];let y=0;
@@ -83,6 +100,7 @@
   function layout(board){
     if(board.mode==='conceptmap')return conceptmap(board);
     if(board.mode==='matrix')return matrix(board);
+    if(board.mode==='timeline')return timeline(board);
     if(board.mode==='process')return process(board);
     if(structured.has(board.mode))return columns(groups(board,board.mode),board.mode);
     return {positions:new Map(board.nodes.map(n=>[n.id,{x:n.x,y:n.y}])),guides:[]};

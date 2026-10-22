@@ -1,5 +1,7 @@
 # Changes
 
+- 0.30.0: Adds six editable built-in research templates, saved per-format custom templates and defaults, and AI filling of instruction cards from selected Zotero sources. Matrix rows expand across selected sources; filled cards keep exact excerpts, source links and verified page positions when available. Adds circular junctions at any connector point for branching to cards or other connectors; the Timeline template uses a dated connector spine with junctions.
+
 - 0.29.5: Generated Concept Maps use a source-grounded Definition card at the centre and spread the other cards into four more spacious branches. Blank comparison matrices explain how to add Zotero sources.
 
 - 0.29.4: Allows cards in Mind map and Concept Map to be dragged without losing their positions on redraw or reload. Reflow restores automatic placement; Concept Map links attach to facing sides. Clarifies which Zotero action creates a mind map.
