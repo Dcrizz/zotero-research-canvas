@@ -478,7 +478,7 @@ async function startup({rootURI}) {
     return {board:CanvasTemplates.fill(CanvasModel,board,checked),filled:checked.entries.length,rejected:checked.rejected,unread:items.length-available.length};
   };
   canvasBridge.dashboardOpenBoard=async id=>{const window=Zotero.getMainWindow(),win=await ensureCanvas(window);await win.CanvasApp.openBoard(id);win.focus();};
-  canvasBridge.dashboardCreateTemplate=async()=>{const board=CanvasTemplates.createCustom(CanvasModel);await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id);canvasWindow.document.getElementById('fit').click();await canvasWindow.CanvasApp.flush();return board.id;};
+  canvasBridge.dashboardCreateTemplate=async()=>{const library=await canvasBridge.listTemplates(),conditional=library.custom.find(row=>row.name.trim().toLocaleLowerCase()==='conditional branches example');const board=CanvasTemplates.createCustom(CanvasModel,conditional);await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id);canvasWindow.document.getElementById('fit').click();await canvasWindow.CanvasApp.flush();return board.id;};
   canvasBridge.dashboardEditTemplate=async(mode,id)=>{
     if(!CanvasTemplates.modes.includes(mode)||id==='builtin'&&!CanvasTemplates.formats.includes(mode))throw Error('Choose an available template format.');
     const library=await canvasBridge.listTemplates(),custom=library.custom.find(row=>row.id===id&&row.mode===mode);

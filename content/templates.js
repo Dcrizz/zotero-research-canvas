@@ -63,7 +63,7 @@
     }
     return M.validate(b);
   }
-  function createCustom(M){
+  function createCustom(M,conditionalTemplate=null){
     const board=M.board('New custom template');board.templateDraft=true;
     const guide=M.node(100,80,'Creating a custom template',[
       'Add your own cards and write AI instructions in each card body. Connect cards to define relationships. This guidance card is excluded when saving or filling the template.',
@@ -75,7 +75,26 @@
     const examples=[['1. Definition','Define the named concept using the selected source. Identify the author and a verified excerpt.',450,80],['2. Finding','Identify one relevant finding about the concept. Explain its scope and cite the source passage.',200,450],['3. Implication','Explain an implication of that finding only when explicitly justified in the source. Distinguish the author’s reasoning from your interpretation.',200,820],['2. Alternative view','Only if: the selected sources explicitly discuss a competing theory\nDescribe the alternative conceptualisation and cite the supporting source passage.',800,450],['3. Strength of alternative','Only if: the selected sources explicitly support a competing theory\nExplain one stated strength of that alternative and cite its supporting excerpt.',650,820],['3. Limitation of alternative','Only if: the selected sources identify a limitation of a competing theory\nExplain that limitation with a source excerpt; do not invent a counterargument.',1000,820]];
     const cards=examples.map(([title,text,x,y])=>{const n=M.node(x,y,title,text);n.width=280;n.height=220;board.nodes.push(n);return n;});
     for(const [a,b,label] of [[0,1,'Finding'],[1,2,'Implication'],[0,3,'Only if supported'],[3,4,'Strength'],[3,5,'Limitation']]){const edge=M.edge(cards[a].id,cards[b].id);Object.assign(edge,{sourceSide:'bottom',targetSide:'top',style:cards[a].x===cards[b].x?'straight':'elbow',label});board.edges.push(edge);}
+    const sequentialIDs=cards.map(n=>n.id);
+    const source=conditionalTemplate?instantiate(M,conditionalTemplate,'Conditional branches example'):conditionalExample(M),sourcePositions=M.positions(source),bounds=M.bounds(source.nodes.map(n=>({...n,...sourcePositions.get(n.id)})));
+    const conditionalIDs=[];for(const original of source.nodes){const n=M.clone(original),at=sourcePositions.get(n.id);n.x=1600+at.x-bounds.x;n.y=80+at.y-bounds.y;delete n.layoutOverrides;board.nodes.push(n);conditionalIDs.push(n.id);}board.edges.push(...source.edges.map(e=>M.clone(e)));
+    const explain=(title,text,x,width)=>{const n=M.node(x,-180,title,text);n.width=width;n.height=165;n.colour='#edf3f6';n.templateGuide=true;board.nodes.push(n);return n.id;};
+    sequentialIDs.push(explain('How to use numbered steps','Numbered cards run in order; cards with the same number run together. Later steps can build on verified earlier answers.\n\nUse case: define a concept, identify findings, then examine their implications. Edit or remove the sample cards for your question.',200,540));
+    conditionalIDs.push(explain('How to use conditional branches','Only if: checks whether the supplied source passages support a branch. Unsupported cards are omitted with an explanation.\n\nUse case: compare a competing theory and its strengths/limitations only when the selected sources actually discuss them.',1600,600));
+    board.frames=[['Sequential Numerical Example',sequentialIDs,'#e5eee9'],['Conditional Branches Example',conditionalIDs,'#eee8f1']].map(([title,members,colour])=>{const rect=M.bounds(board.nodes.filter(n=>members.includes(n.id)),50);return {id:globalThis.crypto.randomUUID(),title,...rect,width:Math.max(200,rect.width),height:Math.max(200,rect.height),colour,border:'#69877d',members,isGroup:true};});
+    guide.text+='\n\nThe two labelled groups include brief explanations and use cases. Explanatory cards are guidance and are excluded from saved templates and AI filling. The fuller conditional example is copied from your saved Conditional branches example when available; its original remains unchanged.';
     return M.validate(board);
+  }
+  function conditionalExample(M){
+    const board=M.board('Conditional branches example');board.templateDraft=true;
+    const specs=[
+      ['1. Definition','Explain the central concept or main argument in the selected sources. If a focus was supplied for this run, use that concept.\n\nDefinition\nGive a concise source-grounded definition.\n\nKey claim\nExplain the main claim in two or three sentences.\n\nInclude an exact source excerpt and author-year reference.',0,0,'#e5f0eb'],
+      ['2. Competing theory','Only if: a selected source explicitly names or explains a competing theory or alternative conceptualisation.\n\nAlternative view\nName and explain the competing account.\n\nDifference\nExplain how it differs from the definition or main account established in step 1. Attribute both views carefully.\n\nIf the supplied excerpts do not support this condition, omit this card and explain why.',480,0,'#eee6f2'],
+      ['3. Strength of the alternative','Only if: the supplied passages explicitly give evidence or a justification for the competing account identified in step 2.\n\nStrength\nExplain the evidence or reasoning offered for that account, with an exact supporting excerpt. Distinguish an author assertion from a reported finding.\n\nIf step 2 found no competing account, or this strength is unsupported, omit this card and explain why.',960,-240,'#e5f1ea'],
+      ['3. Limitation of the alternative','Only if: the supplied passages explicitly identify a limitation or counterexample to the competing account identified in step 2.\n\nLimitation\nExplain the stated limitation, scope condition, or negative case. Use an exact supporting excerpt.\n\nIf step 2 found no competing account, or no limitation is supported, omit this card and explain why.',960,240,'#fff0d9']
+    ];
+    board.nodes=specs.map(([title,text,x,y,colour])=>({...M.node(x,y,title,text),width:340,height:340,colour,border:'#536b69'}));
+    board.edges=[[0,1,'Alternative account','#98649a'],[1,2,'Justification','#287b63'],[1,3,'Limitation','#b48539']].map(([a,b,label,colour])=>({...M.edge(board.nodes[a].id,board.nodes[b].id),sourceSide:'right',targetSide:'left',style:'straight',hierarchy:false,label,colour}));return M.validate(board);
   }
   const revisionFor=(library,mode)=>library.modeRevisions?.[mode]??library.defaultRevision;
   function validateLibrary(M,value){
@@ -196,5 +215,5 @@
     if(checked.omissions?.length)result.templateOmissions=checked.omissions.map(({task,reason})=>({title:task.node.title,condition:condition(task.node),reason,source:task.source||''}));
     return M.validate(result);
   }
-  const api={formats,modes,createCustom,revisionFor,empty,builtIn,defaultBoard,saveDefault,resetDefaults,validateLibrary,capture,instantiate,tasks,stepNumber,condition,sequence,prompt,verify,run,fill};root.CanvasTemplates=api;if(typeof module!=='undefined')module.exports=api;
+  const api={formats,modes,createCustom,conditionalExample,revisionFor,empty,builtIn,defaultBoard,saveDefault,resetDefaults,validateLibrary,capture,instantiate,tasks,stepNumber,condition,sequence,prompt,verify,run,fill};root.CanvasTemplates=api;if(typeof module!=='undefined')module.exports=api;
 })(globalThis);
