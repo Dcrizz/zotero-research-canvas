@@ -76,3 +76,16 @@ test('numbered comparison rows keep all selected sources within the same step',(
   assert.equal(stages[0].slots.length,2);assert.deepEqual(stages[0].slots.map(slot=>slot.source),['s0','s1']);
   assert.equal(stages[2].slots.length,4);
 });
+
+test('conditional cards omit unsupported branches and save an explainable report',async()=>{
+  const board=T.builtIn(M,'conceptmap','Conditional concept');board.nodes[0].title='1. Definition';
+  const alternative=board.nodes.find(n=>n.title==='Alternative view');alternative.title='2. Alternative view';alternative.text='Only if: a selected source explicitly describes a competing theory.\nExplain the theory and its source.';
+  assert.match(T.condition(alternative),/competing theory/);
+  const checked=await T.run(board,sources,'',async request=>{
+    const payload=JSON.parse(request.messages[0].content);
+    if(payload.slots.some(slot=>slot.id===alternative.id))return JSON.stringify({entries:[],omissions:[{task:alternative.id,reason:'The supplied excerpts discuss findings but name no competing theory.'}]});
+    return JSON.stringify({entries:payload.slots.filter(slot=>slot.id===board.nodes[0].id).map(slot=>({task:slot.id,source:'s0',passage:'p1',quote:sources[0].passages[0].text,text:'Definition grounded in the source.'}))});
+  });
+  assert.equal(checked.omissions.length,1);const filled=T.fill(M,board,checked);assert.equal(filled.templateOmissions.length,1);assert.equal(filled.templateOmissions[0].title,'2. Alternative view');assert.ok(!filled.nodes.some(n=>n.title==='2. Alternative view'));
+  assert.deepEqual(M.validate(filled),filled);
+});

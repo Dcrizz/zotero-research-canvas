@@ -24,6 +24,7 @@ async function startup({rootURI}) {
   Services.scriptloader.loadSubScript(rootURI + 'content/ai-provider.js', this);
   Services.scriptloader.loadSubScript(rootURI + 'content/model.js', this);
   Services.scriptloader.loadSubScript(rootURI + 'content/templates.js', this);
+  Services.scriptloader.loadSubScript(rootURI + 'content/research.js', this);
   Services.scriptloader.loadSubScript(rootURI + 'content/library.js', this);
   const directory = PathUtils.join(Zotero.DataDirectory.dir, 'research-canvas');
   await IOUtils.makeDirectory(directory, {ignoreExisting: true});
@@ -76,6 +77,7 @@ async function startup({rootURI}) {
     const annotationColourName=CanvasModel.annotationLabel(annotation.color,palette?JSON.parse(palette):[]);
     return {annotationColour: annotation.color, annotationColourName, metadata: sourceMetadata, kind: 'annotation', title: CanvasModel.referenceTitle(source.isRegularItem()?source.getField('firstCreator')||sourceMetadata.author:'',sourceMetadata.year,source.getField('title')||attachment.getField('title')),
       text: parsed.body.textContent.trim(), annotationHTML: rendered.html || '<p></p>',
+      evidenceQuote: CanvasResearch.normalize(annotation.text||annotation.annotationText||'').slice(0,600),
       link: {libraryID: attachment.libraryID, key: attachment.key},
       annotationKey: /^[A-Z0-9]{8}$/.test(annotation.id || '') ? annotation.id : undefined};
   };
@@ -130,6 +132,49 @@ async function startup({rootURI}) {
   canvasBridge = {
     nativeNotes: true,
     directory,
+    async auditEvidence(nodes){
+      if(!Array.isArray(nodes)||nodes.length>500||nodes.some(n=>!n||typeof n.id!=='string'||!n.link))throw Error('Choose up to 500 linked cards for an evidence check.');
+      const itemCache=new Map(),pageCache=new Map(),results=[];
+      const itemFor=async(libraryID,key)=>{const id=libraryID+'/'+key;if(!itemCache.has(id))itemCache.set(id,await Zotero.Items.getByLibraryAndKeyAsync(libraryID,key));return itemCache.get(id);};
+      for(const node of nodes){
+        const item=await itemFor(node.link.libraryID,node.link.key),annotation=node.annotationKey?await itemFor(node.link.libraryID,node.annotationKey):null;
+        if(!item||item.deleted||node.annotationKey&&(!annotation||annotation.deleted||!annotation.isAnnotation()||annotation.parentID!==item.id)){results.push({id:node.id,...CanvasResearch.assess(node,{exists:false})});continue;}
+        let text=null,pageText=null;
+        if(annotation)text=[annotation.annotationText,annotation.annotationComment].filter(Boolean).join(' ');
+        else if(item.isNote())text=CanvasConnections.plain(item.getNote());
+        else if(item.isAttachment()&&item.attachmentContentType==='application/pdf'){
+          const cache=Zotero.Fulltext.getItemCacheFile(item);
+          if(cache&&await IOUtils.exists(cache.path)&&(await IOUtils.stat(cache.path)).size<=12000000)text=await IOUtils.readUTF8(cache.path);
+          if(Number.isInteger(node.pageIndex)){
+            if(!pageCache.has(item.id)){
+              const reader=Zotero.getMainWindow().Meet?.Zotero;
+              let documents=null;
+              if(typeof reader?.pdf2documents==='function')try{documents=await reader.pdf2documents(item.id);}catch(error){Zotero.logError(error);}
+              pageCache.set(item.id,documents);
+            }
+            const pages=pageCache.get(item.id);
+            if(Array.isArray(pages)){const matching=pages.filter(p=>p.metadata?.position?.pageIndex===node.pageIndex);if(matching.length)pageText=matching.map(p=>p.pageContent||'').join(' ');}
+          }
+        }
+        results.push({id:node.id,...CanvasResearch.assess(node,{exists:true,text,pageText})});
+      }
+      return results;
+    },
+    async sourceIdentity(nodes){
+      if(!Array.isArray(nodes)||nodes.length>500||nodes.some(n=>!n||typeof n.id!=='string'||!n.link))throw Error('Choose up to 500 linked cards for source coverage.');
+      const cache=new Map(),result=[];
+      for(const node of nodes){
+        const id=node.link.libraryID+'/'+node.link.key;
+        if(!cache.has(id))cache.set(id,await Zotero.Items.getByLibraryAndKeyAsync(node.link.libraryID,node.link.key));
+        let source=cache.get(id),depth=0;
+        while(source?.parentID&&depth++<3){source=await Zotero.Items.getAsync(source.parentID);if(!source)break;}
+        if(!source||source.deleted){result.push({id:node.id,libraryID:node.link.libraryID,key:node.link.key,title:'Unavailable source',author:'',year:''});continue;}
+        const meta=await metadata(source);
+        let pageLabel='';if(node.annotationKey){const annotation=await Zotero.Items.getByLibraryAndKeyAsync(node.link.libraryID,node.annotationKey);if(annotation&&!annotation.deleted&&annotation.isAnnotation())pageLabel=annotation.annotationPageLabel||'';}
+        result.push({id:node.id,libraryID:source.libraryID,key:source.key,title:source.isRegularItem()?source.getField('title')||source.key:source.isNote()?source.getNoteTitle():source.getField('title')||source.key,author:meta.author,year:meta.year,pageLabel});
+      }
+      return result;
+    },
     async connectionCards(nodes){
       if(!Array.isArray(nodes)||nodes.length>30)throw Error('Choose up to 30 cards for connection suggestions.');
       const result=[];for(const n of nodes){if(!n||typeof n.id!=='string'||typeof n.title!=='string'||typeof n.text!=='string')throw Error('Invalid connection card.');let title=n.title,text=n.text;

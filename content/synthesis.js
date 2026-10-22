@@ -74,7 +74,7 @@
       const type=(mode==='conceptmap'?conceptTypes:cardTypes)[claim.cardType]||cardTypes.Claim;
       const sourceTitle=(source.author||'Unknown author')+(source.year?' ('+source.year+')':' (n.d.)')+' - '+source.title;
       const node=M.node(index*280,0,mode==='conceptmap'?type.icon+' '+claim.cardType+' · '+sourceTitle:mode==='comparison'?type.icon+' '+claim.cardType+' · '+claim.title:claim.title,mode==='conceptmap'?claim.title+'\n\n'+(claim.interpretation?claim.interpretation+'\n\n':'')+'“'+claim.quote+'”\n\n'+passage.origin:(claim.interpretation?claim.interpretation+'\n\n':'')+'“'+claim.quote+'”\n\nSource: '+(caption?caption+' — ':'')+source.title+' · '+passage.origin);
-      node.kind='reference';node.synthesis=true;node.link=passage.link;node.width=290;node.height=215;node.metadata={tags:[],author:source.author||'',year:source.year||'',itemType:'research excerpt'};
+      node.kind='reference';node.synthesis=true;node.link=passage.link;node.evidenceQuote=claim.quote;node.width=290;node.height=215;node.metadata={tags:[],author:source.author||'',year:source.year||'',itemType:'research excerpt'};
       if(mode==='conceptmap')node.topicHeading=claim.title;
       if(Number.isInteger(passage.pageIndex))node.pageIndex=passage.pageIndex;
       if(mode==='comparison'||mode==='conceptmap'){node.synthesisType=claim.cardType;node.colour=type.colour;node.border=type.border;}

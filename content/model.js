@@ -51,6 +51,7 @@
     if(b.appearance!==undefined&&(!b.appearance||!colour(b.appearance.background)||!colour(b.appearance.gridColour)||!finite(b.appearance.gridSize,8,100)||typeof b.appearance.showGrid!=='boolean'))throw Error('Invalid canvas appearance.');
     if(b.mindmapDirection!==undefined&&!['horizontal','vertical'].includes(b.mindmapDirection))throw Error('Invalid mind map direction.');
     if(b.templateDraft!==undefined&&typeof b.templateDraft!=='boolean')throw Error('Invalid template state.');
+    if(b.templateOmissions!==undefined&&(!Array.isArray(b.templateOmissions)||b.templateOmissions.length>32||b.templateOmissions.some(row=>!row||typeof row.title!=='string'||row.title.length>500||typeof row.condition!=='string'||row.condition.length>300||typeof row.reason!=='string'||row.reason.length>500||typeof row.source!=='string'||row.source.length>100)))throw Error('Invalid template omission report.');
     if (b.filters !== undefined && (!b.filters || ['tag','author','year','itemType','colourFamily'].some(k => typeof b.filters[k] !== 'string') || !['dim','hide'].includes(b.filters.mode))) throw Error('Invalid filters.');
     const ids = new Set();
     for (const n of b.nodes) {
@@ -65,6 +66,7 @@
         || (n.annotationKey !== undefined && !/^[A-Z0-9]{8}$/.test(n.annotationKey))
         || (n.pageIndex !== undefined && (!Number.isInteger(n.pageIndex)||n.pageIndex<0||n.pageIndex>100000))
         || (n.sourceUnavailable !== undefined && typeof n.sourceUnavailable !== 'boolean')
+        || (n.evidenceQuote !== undefined && (typeof n.evidenceQuote !== 'string' || n.evidenceQuote.length<12 || n.evidenceQuote.length>600))
         || (n.synthesis !== undefined && typeof n.synthesis !== 'boolean')
         || (n.synthesisType !== undefined && !['Claim','Finding','Counterargument','Proves','Disproves','Limitation','Definition','Theory','Alternative','Justification','Example'].includes(n.synthesisType))
         || (n.topicHeading !== undefined && (typeof n.topicHeading!=='string'||n.topicHeading.length>100))

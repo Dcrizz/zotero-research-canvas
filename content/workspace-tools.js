@@ -89,6 +89,65 @@ window.CanvasWorkspace = function (ctx) {
   for (const [mode, label] of [['dim','Dim'], ['hide','Hide']]) button(label, () => { checkpoint(); (getBoard().filters ||= emptyFilters()).mode = mode; changed(); redraw(); }, modeLabel).dataset.filterMode = mode;
   button('Clear filters & colours', () => { checkpoint(); getBoard().filters = emptyFilters(); changed(); redraw(); syncFilterFields(); }, filterPanel).id = 'clear-filters';
   const filterCount = element('small'); filterCount.id = 'filter-count'; filterPanel.append(filterCount);
+  async function linkedBatches(method,nodes,active,onProgress=()=>{}){const rows=[];for(let i=0;i<nodes.length;i+=100){rows.push(...await method(nodes.slice(i,i+100)));if(getBoard()!==active)return null;onProgress(Math.min(i+100,nodes.length));}return rows;}
+  const healthPanel=element('section');healthPanel.id='evidence-health-panel';healthPanel.hidden=true;healthPanel.setAttribute('aria-label','Evidence health');shelf.after(healthPanel);
+  const healthButton=button('Evidence health',async()=>{
+    healthPanel.hidden=!healthPanel.hidden;if(healthPanel.hidden)return;
+    if(!ctx.bridge.auditEvidence)throw Error('Evidence health is available in the installed Zotero plugin.');
+    const active=getBoard(),nodes=active.nodes.filter(n=>n.link&&!n.junction);
+    healthPanel.replaceChildren();const heading=element('h2');heading.textContent='Evidence health';healthPanel.append(heading);
+    const summary=element('p');summary.textContent=nodes.length?'Checking '+nodes.length+' linked cards…':'No linked Zotero cards on this canvas.';healthPanel.append(summary);
+    if(!nodes.length)return;
+    const results=await linkedBatches(batch=>ctx.bridge.auditEvidence(batch),nodes,active,count=>{summary.textContent='Checked '+count+' of '+nodes.length+' linked cards…';});
+    if(!results||healthPanel.hidden)return;
+    healthByID=new Map(results.map(row=>[row.id,row]));
+    const counts={verified:0,changed:0,missing:0,unchecked:0};for(const row of results)counts[row.state]=(counts[row.state]||0)+1;
+    summary.textContent=`${counts.verified} verified · ${counts.changed} changed · ${counts.missing} missing · ${counts.unchecked} need review`;
+    for(const node of nodes){const row=healthByID.get(node.id);if(!row)continue;const item=element('div');item.className='research-row';const label=element('strong');label.textContent=node.title;const state=element('span');state.className='research-state state-'+row.state;state.textContent=row.state==='unchecked'?'Needs review':row.state;const detail=element('p');detail.textContent=row.detail;item.append(label,state,detail);
+      button('Show card',()=>ctx.jumpTo(active.id,node.id),item);
+      button('Open in Zotero',()=>node.annotationKey?ctx.bridge.openSource(node.link,node.annotationKey):ctx.bridge.open(node.link,node.pageIndex),item);
+      healthPanel.append(item);
+    }
+    redraw();
+  });healthButton.id='evidence-health';iconButton(healthButton,'Evidence health','M12 3l8 4v5c0 5-3.4 8.5-8 9-4.6-.5-8-4-8-9V7z M8 12l3 3 5-6');let healthByID=new Map();let healthBoardID=null;
+  const coveragePanel=element('section');coveragePanel.id='source-coverage-panel';coveragePanel.hidden=true;coveragePanel.setAttribute('aria-label','Source coverage');healthPanel.after(coveragePanel);
+  const coverageButton=button('Source coverage',async()=>{
+    coveragePanel.hidden=!coveragePanel.hidden;if(coveragePanel.hidden)return;
+    if(!ctx.bridge.sourceIdentity)throw Error('Source coverage is available in the installed Zotero plugin.');
+    const active=getBoard(),nodes=active.nodes.filter(n=>n.link&&!n.junction);coveragePanel.replaceChildren();
+    const heading=element('h2');heading.textContent='Source coverage';coveragePanel.append(heading);
+    const summary=element('p');summary.textContent='Grouping linked cards by Zotero source…';coveragePanel.append(summary);
+    const identities=await linkedBatches(batch=>ctx.bridge.sourceIdentity(batch),nodes,active,count=>{summary.textContent='Grouped '+count+' of '+nodes.length+' linked cards…';});if(!identities||coveragePanel.hidden)return;
+    const data=CanvasResearch.coverage(active,identities);summary.textContent=data.groups.length+' sources across '+data.linked+' linked cards';
+    for(const source of data.groups){const row=element('details');row.className='coverage-source';const title=element('summary');title.textContent=(source.author?source.author+(source.year?' ('+source.year+')':'')+' — ':'')+source.title+' · '+source.cards.length+' card'+(source.cards.length===1?'':'s')+' ('+Math.round(source.cards.length/data.linked*100)+'%)';row.append(title);
+      for(const id of source.cards){const node=active.nodes.find(n=>n.id===id);button(node.title,()=>ctx.jumpTo(active.id,id),row);}coveragePanel.append(row);}
+    if(!data.groups.length){const empty=element('p');empty.textContent='Add Zotero-linked cards to see source coverage.';coveragePanel.append(empty);}
+    const single=data.claims.filter(claim=>claim.sources.length<=1);if(single.length){const section=element('div');section.className='coverage-alerts';const title=element('h3');title.textContent='Claims needing another source';section.append(title);
+      for(const claim of single){const row=element('div');row.className='research-row';const label=element('strong');label.textContent=claim.title;const detail=element('p');detail.textContent=!claim.sources.length?'No Zotero source is linked to this claim or its support.':!claim.supportingCards?'No supporting connector is linked to this claim.': 'This claim and its linked support draw on only one distinct source.';row.append(label,detail);button('Show card',()=>ctx.jumpTo(active.id,claim.id),row);section.append(row);}coveragePanel.append(section);}
+  });coverageButton.id='source-coverage';iconButton(coverageButton,'Source coverage','M4 19V9h4v10 M10 19V5h4v14 M16 19v-7h4v7 M3 21h18');
+  const walkthroughPanel=element('section');walkthroughPanel.id='argument-walkthrough';walkthroughPanel.hidden=true;walkthroughPanel.setAttribute('role','dialog');walkthroughPanel.setAttribute('aria-modal','true');walkthroughPanel.setAttribute('aria-label','Argument walkthrough');document.body.append(walkthroughPanel);
+  let walkthroughBoardID=null,walkthroughSteps=[],walkthroughIndex=0,walkthroughSources=new Map();
+  function showWalkthrough(){
+    const active=getBoard();if(active.id!==walkthroughBoardID){walkthroughPanel.hidden=true;return;}
+    walkthroughPanel.replaceChildren();const step=walkthroughSteps[walkthroughIndex];if(!step){const empty=element('p');empty.textContent='No text cards are available for a walkthrough.';walkthroughPanel.append(empty);button('Close',()=>{walkthroughPanel.hidden=true;},walkthroughPanel);return;}
+    const node=active.nodes.find(n=>n.id===step.id),source=walkthroughSources.get(step.id);
+    const header=element('div');header.className='walkthrough-header';const progress=element('span');progress.textContent=(walkthroughIndex+1)+' / '+walkthroughSteps.length;const close=button('Close',()=>{walkthroughPanel.hidden=true;},header);close.setAttribute('aria-label','Close argument walkthrough');header.prepend(progress);walkthroughPanel.append(header);
+    const type=element('span');type.className='walkthrough-role';type.textContent=step.role+(step.relation?' · '+step.relation:'');walkthroughPanel.append(type);
+    const title=element('h2');title.textContent=step.title;walkthroughPanel.append(title);
+    const body=element('div');body.className='walkthrough-body';body.textContent=node.text||'No card text yet.';walkthroughPanel.append(body);
+    if(source){const citation=element('p');citation.className='walkthrough-citation';citation.textContent='Source: '+(source.author||source.title)+(source.year?' ('+source.year+')':'')+(source.author?' — '+source.title:'')+(source.pageLabel?' · p. '+source.pageLabel:Number.isInteger(node.pageIndex)?' · PDF page '+(node.pageIndex+1):'');walkthroughPanel.append(citation);}
+    const actions=element('div');actions.className='walkthrough-actions';const previous=button('Previous',()=>{walkthroughIndex--;showWalkthrough();},actions);previous.disabled=walkthroughIndex===0;
+    const next=button('Next',()=>{walkthroughIndex++;showWalkthrough();},actions);next.disabled=walkthroughIndex===walkthroughSteps.length-1;
+    button('Show on canvas',()=>{walkthroughPanel.hidden=true;return ctx.jumpTo(active.id,node.id);},actions);
+    if(node.link)button('Open source',()=>node.annotationKey?ctx.bridge.openSource(node.link,node.annotationKey):ctx.bridge.open(node.link,node.pageIndex),actions);
+    walkthroughPanel.append(actions);(next.disabled?previous:next).focus({preventScroll:true});
+  }
+  const walkthroughButton=button('Argument walkthrough',async()=>{
+    const active=getBoard();walkthroughSteps=CanvasResearch.walkthrough(active);walkthroughIndex=0;walkthroughBoardID=active.id;
+    const linked=active.nodes.filter(n=>n.link&&!n.junction),identities=ctx.bridge.sourceIdentity?await linkedBatches(batch=>ctx.bridge.sourceIdentity(batch),linked,active):[];if(!identities)return;walkthroughSources=new Map(identities.map(row=>[row.id,row]));
+    if(getBoard()!==active)return;walkthroughPanel.hidden=false;showWalkthrough();
+  });walkthroughButton.id='argument-walkthrough-button';iconButton(walkthroughButton,'Argument walkthrough','M4 5h7v5H4z M13 14h7v5h-7z M11 7h5v7 M16 14l-3-3');
+  walkthroughPanel.addEventListener('keydown',ev=>{if(ev.key==='Escape'){walkthroughPanel.hidden=true;walkthroughButton.focus();}else if(ev.key==='ArrowRight'&&walkthroughIndex<walkthroughSteps.length-1){walkthroughIndex++;showWalkthrough();}else if(ev.key==='ArrowLeft'&&walkthroughIndex>0){walkthroughIndex--;showWalkthrough();}});
   function emptyFilters() { return {tag:'',author:'',year:'',itemType:'',colourFamily:'',mode:'dim'}; }
   function syncFilterFields() { const filters = getBoard().filters || emptyFilters(); for (const [key,input] of Object.entries(filterFields)) if (document.activeElement !== input) input.value = filters[key]; }
   function matches(n) {
@@ -232,7 +291,8 @@ window.CanvasWorkspace = function (ctx) {
 
   const supportButton=button('Find supporting sources',()=>{document.querySelector('#connection-panel [aria-label="Close suggested connections"]').click();counterPanel.open('support');});supportButton.id='supporting-sources';supportButton.hidden=true;
   function render() {
-    const board = getBoard();connectionPanel.render();counterPanel.render();counterButton.disabled=!board.nodes.some(n=>n.id===ctx.selected()?.id&&n.kind!=='canvas'); supportButton.disabled=counterButton.disabled; membershipButton.disabled=!ctx.selected()?.link; renderFilters(); renderMultiple(); framesLayer.replaceChildren();frameControls.replaceChildren();
+    const board = getBoard();if(healthBoardID!==board.id){healthBoardID=board.id;healthByID.clear();healthPanel.hidden=true;}if(walkthroughBoardID&&walkthroughBoardID!==board.id)walkthroughPanel.hidden=true;connectionPanel.render();counterPanel.render();counterButton.disabled=!board.nodes.some(n=>n.id===ctx.selected()?.id&&n.kind!=='canvas'); supportButton.disabled=counterButton.disabled; membershipButton.disabled=!ctx.selected()?.link; renderFilters(); renderMultiple(); framesLayer.replaceChildren();frameControls.replaceChildren();
+    for(const card of document.querySelectorAll('#cards > .card')){const state=healthByID.get(card.dataset.id);if(state){const badge=element('span');badge.className='evidence-health-badge state-'+state.state;badge.textContent=state.state==='verified'?'✓':state.state==='missing'?'!':state.state==='changed'?'↻':'?';badge.title=state.detail;card.append(badge);}}
     for (const f of board.frames || []) {
       const rect = frameRect(f), frame = element('section'); frame.className = 'canvas-frame' + (f.id === frameID ? ' active-frame' : ''); frame.dataset.frame = f.id;
       Object.assign(frame.style, {left: rect.x + 'px', top: rect.y + 'px', width: rect.width + 'px', height: rect.height + 'px', backgroundColor: f.colour + '66', borderColor: f.border});

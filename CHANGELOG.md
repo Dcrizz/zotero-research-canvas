@@ -1,5 +1,7 @@
 # Changes
 
+- 0.31.0: Adds on-demand evidence health checks, source coverage by parent Zotero work, a read-only argument walkthrough, and conditional AI template branches with saved omission explanations. Generated cards now retain their exact evidence quote for later checks.
+
 - 0.30.1: Numbered template cards run through AI in ascending steps. Later steps receive only verified earlier answers as context; equal-numbered cards run together and unnumbered cards retain a single flexible batch after numbered steps. The fill dialog shows progress by step.
 
 - 0.30.0: Adds six editable built-in research templates, saved per-format custom templates and defaults, and AI filling of instruction cards from selected Zotero sources. Matrix rows expand across selected sources; filled cards keep exact excerpts, source links and verified page positions when available. Adds circular junctions at any connector point for branching to cards or other connectors; the Timeline template uses a dated connector spine with junctions.

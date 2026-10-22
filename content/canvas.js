@@ -263,6 +263,7 @@ function render() {
   $('empty').hidden = !!board.nodes.length || !!board.frames?.length || !!board.edges.length;
   $('template-save').hidden=!CanvasTemplates.formats.includes(board.mode)||!board.templateDraft;
   $('template-fill').hidden=!CanvasTemplates.formats.includes(board.mode)||!board.templateDraft;
+  $('template-omissions').hidden=!board.templateOmissions?.length;
   if(board.mode==='matrix')$('empty').innerHTML='Choose sources in Zotero.<br/><small>Select items in the main library pane, then click + Zotero selection above, or drag them here.</small>';
   else $('empty').innerHTML='Start with an idea.<br/><small>Add a card or bring in your Zotero selection.</small>';
   $('format-guides').replaceChildren();
@@ -607,7 +608,7 @@ async function closeNote() {
   } catch (error) { noteStatus(error.message, true); throw error; }
   finally { if (noteFrame) noteFrame.inert = false; $('close-note').disabled = false; }
 }
-function itemNode(item,x,y){const n=M.node(x,y,item.title,item.text);n.link=item.link;if(item.metadata)n.metadata=M.clone(item.metadata);n.kind=item.kind||'reference';if(n.kind==='annotation'){n.annotationHTML=item.annotationHTML;if(item.annotationColour){n.annotationColour=item.annotationColour;n.annotationColourName=item.annotationColourName||'Custom colour';}if(item.annotationKey)n.annotationKey=item.annotationKey;}return n;}
+function itemNode(item,x,y){const n=M.node(x,y,item.title,item.text);n.link=item.link;if(item.metadata)n.metadata=M.clone(item.metadata);n.kind=item.kind||'reference';if(n.kind==='annotation'){n.annotationHTML=item.annotationHTML;if(item.evidenceQuote?.length>=12)n.evidenceQuote=item.evidenceQuote;if(item.annotationColour){n.annotationColour=item.annotationColour;n.annotationColourName=item.annotationColourName||'Custom colour';}if(item.annotationKey)n.annotationKey=item.annotationKey;}return n;}
 function addItems(items,x,y){if(!items.length){status('Select or drop notes and references from Zotero first.');return;}checkpoint();items.forEach((item,i)=>board.nodes.push(itemNode(item,x+i*35,y+i*45)));changed();render();}
 async function addCounterexample(row,sourceID,expectedBoard){
   if(board!==expectedBoard)throw Error('The canvas changed. Search again.');const source=board.nodes.find(n=>n.id===sourceID);if(!source)throw Error('The selected card was removed.');
@@ -618,7 +619,7 @@ async function addCounterexample(row,sourceID,expectedBoard){
   const items=await bridge.fromDrop(String(row.itemID));if(board!==expectedBoard)throw Error('The canvas changed. Search again.');
   if(board.nodes.some(n=>n.link&&n.link.libraryID+'/'+(n.annotationKey||n.link.key)===row.key))throw Error('This source is already on the canvas.');
   const position=M.positions(board).get(source.id),n=itemNode(items[0],position.x+source.width+100,position.y);while(board.nodes.some(c=>n.x<c.x+c.width+20&&n.x+n.width+20>c.x&&n.y<c.y+c.height+45&&n.y+n.height+45>c.y))n.y+=n.height+60;
-  n.counterexampleEvidence={purpose:row.purpose||'counterexample',selectedCardID:source.id,selectedTitle:row.selectedTitle,selectedExcerpt:row.selectedExcerpt,candidateExcerpt:row.candidateExcerpt,reason:row.reason,type:row.type,model:row.model,generatedAt:row.generatedAt,selectedSignature:row.selectedSignature,candidateSignature:row.signature};const edge=M.edge(source.id,n.id);Object.assign(edge,{label:row.purpose==='support'?'SL ✅':'❌CL',colour:row.purpose==='support'?'#277c6b':'#b34747',thickness:3,hierarchy:false,aiEvidence:{reason:row.reason,sourceExcerpt:row.selectedExcerpt,targetExcerpt:row.candidateExcerpt,sourceTitle:row.selectedTitle,targetTitle:row.title,sourceSignature:row.selectedSignature,targetSignature:row.signature,model:row.model,generatedAt:row.generatedAt}});checkpoint();board.nodes.push(n);board.edges.push(edge);changed();render();
+  n.evidenceQuote=row.candidateExcerpt;n.counterexampleEvidence={purpose:row.purpose||'counterexample',selectedCardID:source.id,selectedTitle:row.selectedTitle,selectedExcerpt:row.selectedExcerpt,candidateExcerpt:row.candidateExcerpt,reason:row.reason,type:row.type,model:row.model,generatedAt:row.generatedAt,selectedSignature:row.selectedSignature,candidateSignature:row.signature};const edge=M.edge(source.id,n.id);Object.assign(edge,{label:row.purpose==='support'?'SL ✅':'❌CL',colour:row.purpose==='support'?'#277c6b':'#b34747',thickness:3,hierarchy:false,aiEvidence:{reason:row.reason,sourceExcerpt:row.selectedExcerpt,targetExcerpt:row.candidateExcerpt,sourceTitle:row.selectedTitle,targetTitle:row.title,sourceSignature:row.selectedSignature,targetSignature:row.signature,model:row.model,generatedAt:row.generatedAt}});checkpoint();board.nodes.push(n);board.edges.push(edge);changed();render();
   try{await flush();}catch(error){board.nodes=board.nodes.filter(c=>c.id!==n.id);board.edges=board.edges.filter(e=>e.id!==edge.id);changed();render();throw error;}return n.id;
 }
 let searchRequest = 0;
@@ -710,13 +711,18 @@ async function history(direction) {
 let templateAction=null,templateGeneration=0;
 function openTemplateDialog(action){
   templateAction=action;templateGeneration++;$('template-dialog-title').textContent=action==='save'?'Save canvas template':'Fill template with AI';
-  $('template-dialog-help').textContent=action==='save'?'Edit the cards and their AI instructions first. This saves a reusable, source-free template for this format.':'Select 1–8 regular Zotero sources. Cards headed 1. Definition, 2. Alternative view, and so on run in number order; unnumbered cards run together afterward. Each numbered step makes one AI request.';
+  $('template-dialog-help').textContent=action==='save'?'Edit the cards and their AI instructions first. Begin a conditional card with “Only if: …” to require explicit source support. This saves a reusable, source-free template for this format.':'Select 1–8 regular Zotero sources. Cards headed 1. Definition, 2. Alternative view, and so on run in number order; unnumbered cards run together afterward. Cards beginning “Only if: …” are created only when supported; omitted reasons appear after filling. Each numbered step makes one AI request.';
   $('template-name-row').hidden=action!=='save';$('template-focus-row').hidden=action!=='fill';$('template-default-row').hidden=action!=='save';
   $('template-confirm').textContent=action==='save'?'Save template':'Fill cards';$('template-name').required=action==='save';
   $('template-name').value='';$('template-focus').value='';$('template-default').checked=false;$('template-dialog-status').textContent='';$('template-dialog-shade').hidden=false;
   (action==='save'?$('template-name'):$('template-focus')).focus();
 }
 function closeTemplateDialog(){templateGeneration++;$('template-dialog-shade').hidden=true;templateAction=null;}
+function showTemplateOmissions(){
+  const rows=board.templateOmissions||[],list=$('template-omissions-list');list.replaceChildren();
+  for(const row of rows){const item=html('article'),title=html('strong'),condition=html('p'),reason=html('p');title.textContent=row.title;condition.textContent='Condition: '+row.condition;reason.textContent='AI assessment: '+row.reason;item.append(title,condition,reason);list.append(item);}
+  $('template-omissions-panel').hidden=!rows.length;
+}
 async function submitTemplateDialog(){
   const action=templateAction,active=board,generation=templateGeneration;if(!action)return;
   $('template-confirm').disabled=true;$('template-dialog-status').textContent=action==='fill'?'Reading selected sources and checking excerpts…':'';
@@ -734,13 +740,14 @@ async function submitTemplateDialog(){
       });
       if(generation!==templateGeneration)return;
       if(board!==active||revision!==activeRevision)throw Error('The canvas changed during AI generation. No cards were replaced.');
-      checkpoint();board=M.validate(result.board);changed();render();fit();await flush();closeTemplateDialog();status(result.filled+' template cards filled; '+result.rejected+' unsupported AI entries excluded.');
+      checkpoint();board=M.validate(result.board);changed();render();fit();await flush();closeTemplateDialog();if(board.templateOmissions?.length)showTemplateOmissions();status(result.filled+' template cards filled; '+(board.templateOmissions?.length||0)+' conditional branches omitted; '+result.rejected+' unsupported AI entries excluded.');
     }
   }catch(error){if(generation===templateGeneration){$('template-dialog-status').textContent=error.message;report(error);}}
   finally{$('template-confirm').disabled=false;}
 }
 function bind() {
   $('template-save').onclick=()=>openTemplateDialog('save');$('template-fill').onclick=()=>openTemplateDialog('fill');$('template-cancel').onclick=closeTemplateDialog;
+  $('template-omissions').onclick=showTemplateOmissions;$('template-omissions-close').onclick=()=>{$('template-omissions-panel').hidden=true;};
   $('template-dialog-shade').onclick=event=>{if(event.target===$('template-dialog-shade'))closeTemplateDialog();};
   $('template-dialog').onsubmit=event=>{event.preventDefault();submitTemplateDialog().catch(report);};
   function choices(container, field, rows, kind = 'edge') {
