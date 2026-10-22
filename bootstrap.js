@@ -208,6 +208,7 @@ async function startup({rootURI}) {
       try{const result=await ai.requestChatTurn(turn,{sessionId:'research-canvas-'+jobID,reasoningEffortOverride:'low',responseStartTimeoutMs:60000,idleTimeoutMs:45000,absoluteTimeoutMs:120000,requestTimeoutMs:120000,isCancelled:()=>state.cancelled,onXhr:xhr=>{state.xhr=xhr;if(state.cancelled)xhr.abort();}});if(state.cancelled)throw Error('Connection analysis cancelled.');return {text:result.text,model:String(params.model)};}finally{connectionJobs.delete(jobID);}
     },
     cancelConnections(jobID){const state=connectionJobs.get(jobID);if(state){state.cancelled=true;state.xhr?.abort();}},
+    async authorTemplate(request,jobID){return this.connectionAIRequest(request,jobID);},
     async suggestConnections(cards,excluded,jobID){
       const sources=CanvasConnections.prepare(cards);if(sources.length<2||!Array.isArray(excluded)||excluded.length>20000||typeof jobID!=='string'||jobID.length>100)throw Error('Invalid connection analysis request.');for(const p of excluded){let pair;try{pair=JSON.parse(p);}catch{throw Error('Invalid excluded connection.');}if(!Array.isArray(pair)||pair.length!==2||pair.some(id=>typeof id!=='string'))throw Error('Invalid excluded connection.');}
       return this.connectionAIRequest(CanvasConnections.prompt(sources,excluded),jobID);
@@ -223,8 +224,8 @@ async function startup({rootURI}) {
     saveDefaultTemplate(mode,board,revision){
       const operation=queue.then(async()=>{const next=CanvasTemplates.saveDefault(CanvasModel,await this.listTemplates(),mode,board,revision),dir=PathUtils.join(directory,'settings');await IOUtils.makeDirectory(dir,{ignoreExisting:true});const path=PathUtils.join(dir,'templates.json');await IOUtils.writeJSON(path,next,{tmpPath:path+'.tmp',backupFile:path+'.bak'});return next;});queue=operation.catch(error=>Zotero.logError(error));return operation;
     },
-    resetDefaultTemplates(){
-      const operation=queue.then(async()=>{const next=CanvasTemplates.resetDefaults(CanvasModel,await this.listTemplates()),dir=PathUtils.join(directory,'settings');await IOUtils.makeDirectory(dir,{ignoreExisting:true});const path=PathUtils.join(dir,'templates.json');await IOUtils.writeJSON(path,next,{tmpPath:path+'.tmp',backupFile:path+'.bak'});canvasWindow?.CanvasApp?.defaultTemplatesReset(next.defaultRevision);return next;});queue=operation.catch(error=>Zotero.logError(error));return operation;
+    resetDefaultTemplates(mode=null){
+      const operation=queue.then(async()=>{const next=CanvasTemplates.resetDefaults(CanvasModel,await this.listTemplates(),mode),dir=PathUtils.join(directory,'settings');await IOUtils.makeDirectory(dir,{ignoreExisting:true});const path=PathUtils.join(dir,'templates.json');await IOUtils.writeJSON(path,next,{tmpPath:path+'.tmp',backupFile:path+'.bak'});canvasWindow?.CanvasApp?.defaultTemplatesReset(CanvasTemplates.revisionFor(next,mode),mode);return next;});queue=operation.catch(error=>Zotero.logError(error));return operation;
     },
     updateTemplateDefault(mode,id){const operation=queue.then(async()=>{const library=await this.listTemplates();library.defaults[mode]=id;const next=CanvasTemplates.validateLibrary(CanvasModel,library),path=PathUtils.join(directory,'settings','templates.json');await IOUtils.makeDirectory(PathUtils.parent(path),{ignoreExisting:true});await IOUtils.writeJSON(path,next,{tmpPath:path+'.tmp',backupFile:path+'.bak'});return next;});queue=operation.catch(error=>Zotero.logError(error));return operation;},
     deleteTemplate(id){const operation=queue.then(async()=>{const library=await this.listTemplates(),index=library.custom.findIndex(row=>row.id===id);if(index<0)throw Error('Template unavailable.');const [removed]=library.custom.splice(index,1);if(library.defaults[removed.mode]===id)library.defaults[removed.mode]='builtin';const next=CanvasTemplates.validateLibrary(CanvasModel,library),path=PathUtils.join(directory,'settings','templates.json');await IOUtils.writeJSON(path,next,{tmpPath:path+'.tmp',backupFile:path+'.bak'});return next;});queue=operation.catch(error=>Zotero.logError(error));return operation;},
@@ -477,13 +478,14 @@ async function startup({rootURI}) {
     return {board:CanvasTemplates.fill(CanvasModel,board,checked),filled:checked.entries.length,rejected:checked.rejected,unread:items.length-available.length};
   };
   canvasBridge.dashboardOpenBoard=async id=>{const window=Zotero.getMainWindow(),win=await ensureCanvas(window);await win.CanvasApp.openBoard(id);win.focus();};
+  canvasBridge.dashboardCreateTemplate=async()=>{const board=CanvasTemplates.createCustom(CanvasModel);await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id);return board.id;};
   canvasBridge.dashboardEditTemplate=async(mode,id)=>{
     if(!CanvasTemplates.modes.includes(mode)||id==='builtin'&&!CanvasTemplates.formats.includes(mode))throw Error('Choose an available template format.');
     const library=await canvasBridge.listTemplates(),custom=library.custom.find(row=>row.id===id&&row.mode===mode);
     if(id!=='builtin'&&!custom)throw Error('The selected template is unavailable.');
     const board=custom?CanvasTemplates.instantiate(CanvasModel,custom,custom.name):CanvasTemplates.defaultBoard(CanvasModel,library,mode,CanvasFormats.modes[mode]+' template');
     if(custom){board.templateSourceID=custom.id;board.templateSourceName=custom.name;}
-    else{board.templateDefaultMode=mode;board.templateDefaultRevision=library.defaultRevision;}
+    else{board.templateDefaultMode=mode;board.templateDefaultRevision=CanvasTemplates.revisionFor(library,mode);}
     await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id);return board.id;
   };
   canvasBridge.dashboardCreateBoard=async(title,mode,folderID=null,templateID=null)=>{

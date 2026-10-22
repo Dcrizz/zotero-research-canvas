@@ -57,6 +57,7 @@
     if (b.filters !== undefined && (!b.filters || ['tag','author','year','itemType','colourFamily'].some(k => typeof b.filters[k] !== 'string') || !['dim','hide'].includes(b.filters.mode))) throw Error('Invalid filters.');
     const ids = new Set();
     for (const n of b.nodes) {
+      if(n?.templateGuide!==undefined&&(n.templateGuide!==true||n.link||n.kind||n.objectType))throw Error('Invalid template guidance card.');
       if (!n || typeof n.id !== 'string' || ids.has(n.id) || typeof n.title !== 'string' || typeof n.text !== 'string'
         || !finite(n.x, -1e7, 1e7) || !finite(n.y, -1e7, 1e7) || !finite(n.width, n.junction?16:n.objectType?24:140, 1200) || !finite(n.height, n.junction?16:n.objectType?24:100, 1200)
         || (n.junction !== undefined && (n.junction !== true || n.kind || n.objectType || n.link || n.text))

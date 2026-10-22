@@ -1,5 +1,6 @@
 # Changes
 
+- 0.34.0: Adds Create Template with an excluded guidance card, separate single-format and all-format restores, and a custom-only template selector. Adds AI template authoring with Create draft and Revise draft, prompt-based instructions, validation, cancellation and one-step Undo. Template runs retain their existing source-grounded analysis workflow.
 - 0.33.0: Adds a home icon beside Zotero selection, a dashboard Templates manager with previews and per-format defaults, and a Manage templates entry in Zotero settings. Format-default templates save card and layout edits automatically without naming; Restore built-in defaults resets all six formats while preserving named custom templates. Built-in link types can be customised and reset. Custom template selectors and versioned dashboard assets prevent duplicate option text and stale styles after updates. Adds independent freeform and mind-map custom templates, a custom template browser, and Use custom template from Zotero sources. Item and collection context menus now group shortened, individually illustrated actions under Canvas tools.
 
 - 0.31.0: Adds on-demand evidence health checks, source coverage by parent Zotero work, a read-only argument walkthrough, and conditional AI template branches with saved omission explanations. Generated cards now retain their exact evidence quote for later checks.

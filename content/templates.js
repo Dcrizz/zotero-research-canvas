@@ -63,6 +63,17 @@
     }
     return M.validate(b);
   }
+  function createCustom(M){
+    const board=M.board('New custom template');board.templateDraft=true;
+    const guide=M.node(100,80,'Creating a custom template',[
+      'Add your own cards and write AI instructions in each card body. Connect cards to define relationships. This guidance card is excluded when saving or filling the template.',
+      'NUMBERED STEPS\nUse titles such as 1. Definition, 2. Alternative view, 3. Strengths. Numbers run in ascending order. Cards with the same number run together. Later steps receive verified earlier answers. Unnumbered cards run together after numbered steps; with no numbers, all cards run together.',
+      'CONDITIONAL CARDS\nBegin the first instruction line with Only if: followed by a clear condition (8–300 characters), for example: Only if: the sources explicitly discuss a competing theory. Put the remaining instructions on the next lines. Unsupported branches are omitted with an AI reason in the saved Omitted branches report. Conditions are checked against supplied passages, not the entire library.',
+      'MULTIPLE DIRECTIONS\nOne card can request a definition plus an Alternative view heading. Each filled card requires an exact source excerpt; pages appear only when verified. Use 1–32 instruction cards after any matrix expansion. Each numbered stage makes an AI request.',
+      'SAVE AND USE\nSave template asks for a name because this is an independent custom template. Select sources in Zotero, then Canvas tools → Use custom template. You can add an optional focus. Delete this guidance card whenever you wish.'
+    ].join('\n\n'));guide.width=640;guide.height=760;guide.templateGuide=true;board.nodes.push(guide);return M.validate(board);
+  }
+  const revisionFor=(library,mode)=>library.modeRevisions?.[mode]??library.defaultRevision;
   function validateLibrary(M,value){
     if(!value||value.version!==1||!Array.isArray(value.custom)||value.custom.length>100||!value.defaults||typeof value.defaults!=='object')throw Error('Invalid saved canvas templates.');
     const ids=new Set(),custom=value.custom.map(row=>{
@@ -74,12 +85,13 @@
     const builtinOverrides=value.builtinOverrides||{},defaultRevision=value.defaultRevision??0;
     if(typeof builtinOverrides!=='object'||Array.isArray(builtinOverrides)||!Number.isSafeInteger(defaultRevision)||defaultRevision<0)throw Error('Invalid default canvas templates.');
     const overrides={};for(const [mode,value] of Object.entries(builtinOverrides)){assertMode(mode);const board=M.validate(value);if(board.mode!==mode||!board.templateDraft||board.nodes.length>40||board.edges.length>80||board.nodes.some(n=>n.link||n.kind||n.objectType||n.text.length>3000))throw Error('Default templates must contain editable instruction cards.');overrides[mode]=board;}
-    return {version:1,custom,defaults:{...value.defaults},builtinOverrides:overrides,defaultRevision};
+    const modeRevisions=value.modeRevisions||{};if(typeof modeRevisions!=='object'||Array.isArray(modeRevisions)||Object.entries(modeRevisions).some(([mode,revision])=>!formats.includes(mode)||!Number.isSafeInteger(revision)||revision<defaultRevision))throw Error('Invalid template revision.');
+    return {version:1,custom,defaults:{...value.defaults},builtinOverrides:overrides,defaultRevision,modeRevisions:{...modeRevisions}};
   }
   const empty=()=>({version:1,custom:[],defaults:{},builtinOverrides:{},defaultRevision:0});
   function capture(M,board,name,id=globalThis.crypto.randomUUID()){
     if(!modes.includes(board.mode)||typeof name!=='string'||!name.trim()||name.length>100)throw Error('Open an editable instruction canvas and give the template a name.');
-    const clean=M.validate(board);if(clean.nodes.some(n=>n.link||n.kind||n.objectType)||clean.nodes.length>40||clean.edges.length>80)throw Error('Templates can only contain editable instruction cards; remove linked Zotero cards and file objects first.');
+    const clean=M.validate(board);const guides=new Set(clean.nodes.filter(n=>n.templateGuide).map(n=>n.id));clean.nodes=clean.nodes.filter(n=>!n.templateGuide);clean.edges=clean.edges.filter(e=>!guides.has(e.source)&&!guides.has(e.target));if(clean.frames)clean.frames=clean.frames.map(f=>({...f,members:f.members.filter(id=>!guides.has(id))}));if(clean.nodes.some(n=>n.link||n.kind||n.objectType)||clean.nodes.length>40||clean.edges.length>80)throw Error('Templates can only contain editable instruction cards; remove linked Zotero cards and file objects first.');
     if(!clean.nodes.some(n=>!n.junction))throw Error('Add at least one instruction card before saving a template.');
     clean.templateDraft=true;delete clean.templateSourceID;delete clean.templateSourceName;delete clean.templateDefaultMode;delete clean.templateDefaultRevision;clean.title=name.trim();clean.view={x:60,y:60,zoom:1};return {id,name:name.trim(),mode:clean.mode,board:clean};
   }
@@ -94,16 +106,16 @@
   function defaultBoard(M,library,mode,title){assertMode(mode);const saved=library.builtinOverrides?.[mode];return saved?instantiate(M,{board:saved},title):builtIn(M,mode,title);}
   function saveDefault(M,library,mode,board,revision){
     const next=validateLibrary(M,library);assertMode(mode);
-    if(revision!==next.defaultRevision)throw Error('Default templates were restored after this editor opened. Reopen the template from the dashboard before editing.');
+    if(revision!==revisionFor(next,mode))throw Error('Default templates were restored after this editor opened. Reopen the template from the dashboard before editing.');
     if(board.mode!==mode)throw Error('Keep the default template in its original canvas format.');
     next.builtinOverrides[mode]=capture(M,board,'Default '+mode).board;next.defaults[mode]='builtin';return validateLibrary(M,next);
   }
-  function resetDefaults(M,library){const next=validateLibrary(M,library);next.builtinOverrides={};next.defaults={};next.defaultRevision++;return validateLibrary(M,next);}
+  function resetDefaults(M,library,mode=null){const next=validateLibrary(M,library),revision=Math.max(next.defaultRevision,...Object.values(next.modeRevisions))+1;if(mode!==null){assertMode(mode);delete next.builtinOverrides[mode];delete next.defaults[mode];next.modeRevisions[mode]=revision;}else{next.builtinOverrides={};next.defaults={};next.defaultRevision=revision;next.modeRevisions={};}return validateLibrary(M,next);}
   function tasks(board,sources){
     if(!board.templateDraft||!modes.includes(board.mode)||!Array.isArray(sources)||!sources.length||sources.length>8)throw Error('Open an instruction template and select 1–8 Zotero sources.');
     if(board.nodes.some(n=>n.link||n.kind||n.objectType))throw Error('This template contains linked source cards or file objects. Keep sources selected in Zotero rather than adding them to the instruction canvas.');
-    if(board.nodes.some(n=>!n.junction&&!n.text.trim()))throw Error('Give every template card an AI instruction before filling it.');
-    const result=[];for(const n of board.nodes){if(n.junction)continue;
+    if(board.nodes.some(n=>!n.junction&&!n.templateGuide&&!n.text.trim()))throw Error('Give every template card an AI instruction before filling it.');
+    const result=[];for(const n of board.nodes){if(n.junction||n.templateGuide)continue;
       const repeat=board.mode==='matrix'&&n.organization?.matrixColumn==='{{source}}';
       for(const source of repeat?sources:[null])result.push({id:n.id+(source?'@'+source.id:''),node:n,source:source?.id||null});
     }
@@ -141,7 +153,7 @@
     }
     if(data.omissions!==undefined){if(!Array.isArray(data.omissions)||data.omissions.length>32)throw Error('AI returned invalid template omissions. The canvas was not changed.');for(const row of data.omissions){const task=slots.get(row?.task);if(!task||!condition(task.node)||seen.has(row.task)||typeof row.reason!=='string'||row.reason.trim().length<10||row.reason.length>500){rejected++;continue;}seen.add(row.task);omissions.push({task,reason:row.reason.trim()});}}
     if(!entries.length&&!options.allowEmpty)throw Error('No template card had a verified source excerpt. The canvas was not changed.');
-    if(options.requireRoot!==false&&board.mode!=='matrix'&&!entries.some(e=>e.task.node.id===board.nodes.find(n=>!n.junction)?.id))throw Error('The central template card lacked grounded evidence. The canvas was not changed.');
+    if(options.requireRoot!==false&&board.mode!=='matrix'&&!entries.some(e=>e.task.node.id===board.nodes.find(n=>!n.junction&&!n.templateGuide)?.id))throw Error('The central template card lacked grounded evidence. The canvas was not changed.');
     return {entries,omissions,rejected};
   }
   async function run(board,sources,focus,request,progress=()=>{}){
@@ -155,7 +167,7 @@
       for(const task of stage.slots)if(condition(task.node)&&!handled.has(task.id))omissions.push({task,reason:'No source-grounded answer was returned for this condition in the supplied passages.'});
     }
     if(!entries.length)throw Error('No template card had a verified source excerpt. The canvas was not changed.');
-    if(board.mode!=='matrix'&&!entries.some(e=>e.task.node.id===board.nodes.find(n=>!n.junction)?.id))throw Error('The central template card lacked grounded evidence. The canvas was not changed.');
+    if(board.mode!=='matrix'&&!entries.some(e=>e.task.node.id===board.nodes.find(n=>!n.junction&&!n.templateGuide)?.id))throw Error('The central template card lacked grounded evidence. The canvas was not changed.');
     return {entries,omissions,rejected};
   }
   function fill(M,board,checked){
@@ -180,5 +192,5 @@
     if(checked.omissions?.length)result.templateOmissions=checked.omissions.map(({task,reason})=>({title:task.node.title,condition:condition(task.node),reason,source:task.source||''}));
     return M.validate(result);
   }
-  const api={formats,modes,empty,builtIn,defaultBoard,saveDefault,resetDefaults,validateLibrary,capture,instantiate,tasks,stepNumber,condition,sequence,prompt,verify,run,fill};root.CanvasTemplates=api;if(typeof module!=='undefined')module.exports=api;
+  const api={formats,modes,createCustom,revisionFor,empty,builtIn,defaultBoard,saveDefault,resetDefaults,validateLibrary,capture,instantiate,tasks,stepNumber,condition,sequence,prompt,verify,run,fill};root.CanvasTemplates=api;if(typeof module!=='undefined')module.exports=api;
 })(globalThis);

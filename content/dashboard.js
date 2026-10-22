@@ -6,7 +6,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   const svgNS='http://www.w3.org/2000/svg';
   const svg=(tag,attributes={})=>{const element=document.createElementNS(svgNS,tag);for(const [key,value] of Object.entries(attributes))element.setAttribute(key,String(value));return element;};
   let rows=[],library,folderID=null,layout='grid',dialogKind=null,request=0,templateLibrary=CanvasTemplates.empty(),deletePending=false;
-  let managerLibrary=CanvasTemplates.empty(),resetDefaultsPending=false,deleteCustomPending=false;
+  let managerLibrary=CanvasTemplates.empty(),resetDefaultsPending=false,deleteCustomPending=false,restoreOnePending=false;
   const fail=error=>{console.error(error);$('status').textContent=error.message||String(error);$('status').classList.add('error');};
   const act=fn=>()=>Promise.resolve().then(fn).catch(fail);
   const templatePickers=[];
@@ -89,6 +89,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
   function renderTemplateManager(){
     const category=$('manage-format').value,id=$('manage-template').value,custom=managerLibrary.custom.find(row=>row.id===id&&(category==='custom'||row.mode===category)),mode=custom?.mode||category;
+    restoreOnePending=false;$('restore-one-template').textContent='Restore default';$('restore-one-template').hidden=category==='custom';$('manage-template-picker').hidden=category!=='custom';$('manage-template-default').hidden=category!=='custom';
     deleteCustomPending=false;$('manage-template-delete').hidden=!custom;$('manage-template-delete').textContent='Delete custom template';$('manage-template-edit').disabled=!id;
     if(!id){$('manage-template-preview').replaceChildren();$('manage-template-cards').replaceChildren();$('manage-template-default').disabled=true;$('manage-template-status').textContent='No custom templates saved yet.';$('template-edit-hint').textContent='Create a freeform canvas with instruction cards, then use Save template. Right-click Zotero sources → Canvas tools → Use custom template to fill it.';return;}
     const board=custom?custom.board:managerLibrary.builtinOverrides?.[mode]||CanvasTemplates.builtIn(M,mode,'Default '+CanvasFormats.modes[mode]);
@@ -97,7 +98,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     const isDefault=(managerLibrary.defaults[mode]||'builtin')===id;$('manage-template-default').disabled=isDefault||!CanvasTemplates.formats.includes(mode);$('manage-template-default').textContent=!CanvasTemplates.formats.includes(mode)?'Custom template':isDefault?'Current default':'Use by default';
     $('manage-template-status').textContent=custom?'Saved template · '+CanvasFormats.modes[mode]:managerLibrary.builtinOverrides?.[mode]?'Customised default · '+CanvasFormats.modes[mode]:'Built-in default · '+CanvasFormats.modes[mode];
     $('template-edit-hint').textContent=custom?'Editing opens a draft. Use Save template to update this named template.':'Edits to this format default save automatically. Return to the dashboard when you are finished; no name is required.';
-    resetDefaultsPending=false;$('reset-default-templates').textContent='Restore built-in defaults';
+    resetDefaultsPending=false;$('reset-default-templates').textContent='Restore all defaults';
   }
   async function refreshTemplateManager(){if(!bridge.listTemplates)throw Error('Template storage is unavailable.');const selected=$('manage-template').value;managerLibrary=await bridge.listTemplates();renderTemplateManagerChoices(selected);}
   for(const mode of CanvasTemplates.formats){const option=document.createElement('option');option.value=mode;option.textContent=CanvasFormats.modes[mode];$('manage-format').append(option);}
@@ -109,6 +110,8 @@ window.addEventListener('DOMContentLoaded',()=>{
   $('manage-format').onchange=()=>renderTemplateManagerChoices();$('manage-template').onchange=renderTemplateManager;
   $('close-templates').onclick=()=>{for(const picker of templatePickers)picker.close();$('templates-shade').hidden=true;$('manage-templates').focus();};
   $('templates-shade').onclick=event=>{if(event.target===$('templates-shade'))$('close-templates').click();};
+  $('create-custom-template').onclick=act(async()=>{if(!bridge.dashboardCreateTemplate)throw Error('Template creation is available in the installed plugin.');await bridge.dashboardCreateTemplate();});
+  $('restore-one-template').onclick=act(async()=>{const mode=$('manage-format').value;if(!CanvasTemplates.formats.includes(mode))throw Error('Choose a format to restore.');if(!restoreOnePending){restoreOnePending=true;$('restore-one-template').textContent='Confirm restore';return;}if(!bridge.resetDefaultTemplates)throw Error('Template reset is unavailable.');await bridge.resetDefaultTemplates(mode);await refreshTemplateManager();});
   $('manage-template-default').onclick=act(async()=>{if(!bridge.updateTemplateDefault)throw Error('Template defaults are unavailable.');await bridge.updateTemplateDefault(selectedTemplateMode(),$('manage-template').value);await refreshTemplateManager();});
   $('manage-template-edit').onclick=act(async()=>{if(!bridge.dashboardEditTemplate)throw Error('Template editing is available in the installed Zotero plugin.');await bridge.dashboardEditTemplate(selectedTemplateMode(),$('manage-template').value);});
   $('manage-template-delete').onclick=act(async()=>{if(!deleteCustomPending){deleteCustomPending=true;$('manage-template-delete').textContent='Confirm delete template';return;}if(!bridge.deleteTemplate)throw Error('Template deletion is unavailable.');await bridge.deleteTemplate($('manage-template').value);await refreshTemplateManager();});
