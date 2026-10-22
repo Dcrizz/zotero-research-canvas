@@ -36,7 +36,7 @@ AI analyses are text-only and bounded. They send the selected card text and, for
 
 ## Optional appearance integrations
 
-Research Canvas works without the user's other Zotero plugins. If Zotero Style has a custom annotation-colour palette, annotation cards use its saved colour names; otherwise common colours have built-in names and other colours appear as **Custom colour**. If Note Tag Pills is installed, linked notes use its display-only tag styling inside the native note preview; annotation previews use its saved tag colours when available. Without it, tags remain readable with Research Canvas's default styling. The original note content is not changed by these display treatments.
+Research Canvas works without the user's other Zotero plugins. If a `zoterostyle.annotationColors` palette is saved, annotation cards use its colour names; otherwise common colours have built-in names and other colours appear as **Custom colour**. If a compatible `Zotero.NoteTagPills` decorator is available, linked notes use its display-only tag styling inside the native note preview; annotation previews use saved `noteTagPills.appearance` colours when available. Without these integrations, tags remain readable with Research Canvas's default styling. The original note content is not changed by these display treatments.
 
 ## Data and exports
 
