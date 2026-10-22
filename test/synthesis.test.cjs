@@ -19,6 +19,18 @@ test('annotation page labels are preserved without inventing pages for plain PDF
   assert.equal(S.annotationOrigin(''),'PDF annotation');
   assert.match(S.prompt(sources,'comparison').messages[0].content,/cardType/);
 });
+test('optional source focus steers the model and selects matching PDF passages',()=>{
+  const general=JSON.parse(S.prompt(sources,'comparison').messages[0].content);
+  const focused=JSON.parse(S.prompt(sources,'comparison','','Compare algorithmic amplification and creator agency').messages[0].content);
+  assert.equal(general.focus,undefined);
+  assert.equal(focused.focus,'Compare algorithmic amplification and creator agency');
+  assert.match(focused.focusInstruction,/Prioritize/);
+  assert.deepEqual(S.focusTerms(focused.focus),['algorithmic','amplification','creator','agency']);
+  const pdf='Background discussion. '.repeat(120)+'Creator agency can limit algorithmic amplification. '+'Background discussion. '.repeat(120);
+  const starts=S.focusedStarts(pdf,S.focusTerms(focused.focus));
+  assert.ok(starts.some(start=>pdf.slice(start,start+1450).includes('Creator agency')));
+  assert.throws(()=>S.prompt(sources,'comparison','', 'x'.repeat(501)));
+});
 test('concept canvases require verified source passages and produce a directional mind map',()=>{
   const input=[{...sources[0],passages:[{...sources[0].passages[0],text:'The algorithmic feedback loop is a repeated interaction between recommendations and audience responses.'},{id:'p2',origin:'Indexed PDF text (page unavailable)',text:'Repeated recommendations shape which videos users encounter during later sessions.',link:{libraryID:1,key:'ABCDEFGH'}}]}];
   const data={claims:[{id:'c1',source:'s0',passage:'p1',quote:input[0].passages[0].text,title:'Algorithmic feedback loop',interpretation:'A working definition from the source.'},{id:'c2',source:'s0',passage:'p2',quote:input[0].passages[1].text,title:'Later recommendations',interpretation:'A component of the loop.'}],relations:[]};

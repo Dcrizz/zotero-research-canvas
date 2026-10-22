@@ -1,5 +1,7 @@
 # Changes
 
+- 0.29.2: Adds an optional focus prompt before comparing selected sources. The focus steers the source-grounded analysis and prioritizes relevant indexed-PDF excerpts; leaving it blank retains the general comparison.
+
 - 0.29.1: Gives literature columns and cards more space. New source-comparison cards have provisional types, distinct colours and clearer relationship labels. PDF annotation cards show saved page labels; plain indexed PDF excerpts still indicate when page location is unavailable.
 
 - 0.29.0: Adds five structured canvas formats and horizontal/vertical mind-map layouts with direct facing parent-child links. Zotero item-menu actions create excerpt-grounded comparison or concept canvases from selected sources, with links back to notes, annotations and indexed PDFs. Generated interpretations are marked as bounded drafts.

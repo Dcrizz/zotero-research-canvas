@@ -85,7 +85,7 @@ async function startup({rootURI}) {
     annotation.id = item.key; annotation.attachmentItemID = item.parentID;
     return describeAnnotation(annotation, allowEmpty);
   };
-  const synthesisSource=async(item,index,concept='')=>{
+  const synthesisSource=async(item,index,concept='',focus='')=>{
     if(!item?.isRegularItem()||item.deleted)throw Error('Select a saved journal article or other regular Zotero source.');
     await item.loadDataType('childItems');
     const meta=await metadata(item),passages=[],term=concept.toLocaleLowerCase();let serial=0;
@@ -108,7 +108,7 @@ async function startup({rootURI}) {
       const full=CanvasConnections.normalize(await IOUtils.readUTF8(cache.path));if(full.length<100)continue;
       const starts=[];
       if(term){let pos=0;while(starts.length<6&&(pos=full.toLocaleLowerCase().indexOf(term,pos))>=0){starts.push(Math.max(0,pos-280));pos+=term.length;}}
-      else for(let part=0;part<6;part++)starts.push(Math.floor((full.length-1)*part/6));
+      else starts.push(...CanvasSynthesis.focusedStarts(full,CanvasSynthesis.focusTerms(focus)));
       for(const start of starts){let from=start;if(from){const space=full.indexOf(' ',from);if(space>=0&&space<from+60)from=space+1;}add(full.slice(from,from+1450),'Indexed PDF text (page unavailable)',{libraryID:attachment.libraryID,key:attachment.key});}
       if(passages.length>=13)break;
     }
@@ -369,12 +369,12 @@ async function startup({rootURI}) {
     }
   };
   Object.assign(canvasBridge,CanvasCounterexampleLibrary(canvasBridge));
-  canvasBridge.synthesizeSelection=async(items,mode,concept='')=>{
-    if(!['comparison','concept'].includes(mode)||mode==='comparison'&&(items.length<2||items.length>8)||mode==='concept'&&(items.length!==1||!concept.trim()||concept.length>160))throw Error('Select 2–8 sources to compare, or one source and a concept to explain.');
-    const sources=await Promise.all(items.map((item,index)=>synthesisSource(item,index,mode==='concept'?concept:'')));
+  canvasBridge.synthesizeSelection=async(items,mode,concept='',focus='')=>{
+    if(!['comparison','concept'].includes(mode)||typeof focus!=='string'||focus.length>500||mode==='comparison'&&(items.length<2||items.length>8)||mode==='concept'&&(items.length!==1||!concept.trim()||concept.length>160))throw Error('Select 2–8 sources to compare, or one source and a concept to explain.');
+    const sources=await Promise.all(items.map((item,index)=>synthesisSource(item,index,mode==='concept'?concept:'',focus)));
     const available=sources.filter(s=>s.passages.length);
     if(mode==='comparison'&&available.length<2||mode==='concept'&&!available.length)throw Error('Not enough readable notes, annotations or indexed PDF text. Index the PDFs in Zotero, then try again.');
-    const jobID='synthesis-'+Services.uuid.generateUUID(),response=await canvasBridge.connectionAIRequest(CanvasSynthesis.prompt(available,mode,concept),jobID);
+    const jobID='synthesis-'+Services.uuid.generateUUID(),response=await canvasBridge.connectionAIRequest(CanvasSynthesis.prompt(available,mode,concept,focus),jobID);
     const checked=CanvasSynthesis.verify(response.text,available,mode);
     const name=mode==='concept'?concept.trim()+' — '+available[0].title:'Source comparison — '+available.map(s=>s.author||s.title).join(', ');
     const board=CanvasSynthesis.build(CanvasModel,checked,mode,name.slice(0,180),response.model);
@@ -461,13 +461,16 @@ function onMainWindowLoad({window}) {
   }
 }
 async function createSourceCanvas(window,mode){
-  const items=window.ZoteroPane.getSelectedItems().slice();let concept='';
+  const items=window.ZoteroPane.getSelectedItems().slice();let concept='',focus='';
   if(mode==='concept'){
     const answer={value:''};if(!Services.prompt.prompt(window,'Explain a concept','Which concept from the selected source should the canvas explain?',answer,null,{}))return;
     concept=answer.value.trim();if(!concept)throw Error('Enter a concept from the selected source.');
+  }else{
+    const answer={value:''};if(!Services.prompt.prompt(window,'Compare sources','Focus on a topic, concept or question? Leave blank for a general comparison.',answer,null,{}))return;
+    focus=answer.value.trim();if(focus.length>500)throw Error('Keep the canvas focus under 500 characters.');
   }
   const progress=new Zotero.ProgressWindow({window,closeOnClick:false});progress.changeHeadline('Creating a source-grounded canvas');progress.addDescription('Reading saved notes, annotations and indexed PDF passages, then checking the AI draft.');progress.show();
-  let result;try{result=await canvasBridge.synthesizeSelection(items,mode,concept);}finally{progress.close();}
+  let result;try{result=await canvasBridge.synthesizeSelection(items,mode,concept,focus);}finally{progress.close();}
   canvasWindow?.focus();
   Services.prompt.alert(window,'Canvas created',result.claims+' grounded cards and '+result.links+' links were created from '+result.passages+' selected passages. '+result.rejected+' unsupported AI entries were excluded; '+result.unread+' source(s) had no readable text. This is a draft based on bounded excerpts, not a complete reading of each PDF.');
 }
