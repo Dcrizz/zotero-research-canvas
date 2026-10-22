@@ -1,7 +1,21 @@
 (function(root){
   'use strict';
-  const modes={canvas:'Freeform canvas',mindmap:'Mind map',conceptmap:'Concept Map',evidence:'Evidence map',matrix:'Comparison matrix',timeline:'Timeline',literature:'Literature map',process:'Process diagram'};
-  const structured=new Set(['conceptmap','evidence','matrix','timeline','literature','process']);
+  const modes={canvas:'Freeform canvas',mindmap:'Mind map',conceptmap:'Concept Map',evidence:'Evidence map',matrix:'Comparison matrix',timeline:'Timeline',literature:'Literature map',process:'Process diagram',researchdesign:'Research Design',researchreview:'Research Review',affinity:'Affinity Diagram',debate:'Debate Tree'};
+  const structured=new Set(['conceptmap','evidence','matrix','timeline','literature','process','researchdesign','researchreview','affinity','debate']);
+  const researchSections={
+    researchdesign:[['problem','Phenomenon / problem'],['literature','Literature'],['questions','Research questions / hypotheses'],['theory','Theory and concepts'],['assumptions','Assumptions / paradigm'],['methods','Methodology / design / methods'],['sample','Sample / context'],['observations','Observations and arguments'],['contributions','Contributions']],
+    researchreview:[['overview','Review scope'],['supported','Supported assumptions / claims'],['challenged','Challenged claims'],['emergent','Emergent findings'],['questions','Open questions / future inquiry'],['implications','Theoretical / methodological implications']]
+  };
+  function research(board){
+    const sections=researchSections[board.mode],groups=new Map(sections.map(([key])=>[key,[]])),positions=new Map(),guides=[];
+    for(const n of board.nodes){const key=n.organization?.researchSection||sections[0][0];if(!groups.has(key))groups.set(key,[]);groups.get(key).push(n);}
+    const count=3,width=Math.max(370,...board.nodes.map(n=>n.width+64)),gap=48,entries=[...groups.entries()];let y=0;
+    for(let start=0;start<entries.length;start+=count){const row=entries.slice(start,start+count),height=Math.max(320,...row.map(([,nodes])=>90+nodes.reduce((sum,n)=>sum+n.height+56,0)));
+      for(const [index,[key,nodes]] of row.entries()){const x=index*(width+gap);guides.push({x,y,width,height,label:sections.find(s=>s[0]===key)?.[1]||key,kind:'research-section'});let top=y+84;for(const n of nodes){positions.set(n.id,{x:x+32,y:top});top+=n.height+56;}}
+      y+=height+gap;
+    }
+    return {positions,guides};
+  }
   const label=value=>String(value||'').trim().slice(0,100);
   function groups(board,kind){
     const first=board.nodes[0]?.id;
@@ -18,7 +32,7 @@
       ['claim','Claims',board.nodes.filter(n=>evidenceRole(n)==='claim')],
       ['critical','Critical evidence',board.nodes.filter(n=>evidenceRole(n)==='critical')],
       ['unresolved','Unresolved',board.nodes.filter(n=>evidenceRole(n)==='unresolved')]];
-    const key=kind==='literature'?n=>label(n.organization?.literatureGroup||n.metadata?.tags?.[0])||'Ungrouped':
+    const key=kind==='affinity'?n=>label(n.organization?.affinityGroup)||'Unsorted observations':kind==='literature'?n=>label(n.organization?.literatureGroup||n.metadata?.tags?.[0])||'Ungrouped':
       n=>label(n.organization?.timelineDate||n.metadata?.year)||'Undated';
     const map=new Map();for(const node of board.nodes){const name=key(node);if(!map.has(name))map.set(name,[]);map.get(name).push(node);}
     const entries=[...map.entries()];if(kind==='timeline')entries.sort((a,b)=>a[0]==='Undated'?1:b[0]==='Undated'?-1:a[0].localeCompare(b[0]));
@@ -98,12 +112,14 @@
     return {positions,guides:[]};
   }
   function layout(board){
+    if(researchSections[board.mode])return research(board);
     if(board.mode==='conceptmap')return conceptmap(board);
+    if(board.mode==='debate')return {positions:new Map(),guides:[]};
     if(board.mode==='matrix')return matrix(board);
     if(board.mode==='timeline')return timeline(board);
     if(board.mode==='process')return process(board);
     if(structured.has(board.mode))return columns(groups(board,board.mode),board.mode);
     return {positions:new Map(board.nodes.map(n=>[n.id,{x:n.x,y:n.y}])),guides:[]};
   }
-  const api={modes,structured,layout};root.CanvasFormats=api;if(typeof module!=='undefined')module.exports=api;
+  const api={modes,structured,researchSections,layout};root.CanvasFormats=api;if(typeof module!=='undefined')module.exports=api;
 })(globalThis);

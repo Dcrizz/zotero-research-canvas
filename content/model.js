@@ -44,12 +44,13 @@
     next.edges.push(upstream);
     return {board: validate(next), junctionID: dot.id, upstreamID: upstream.id, downstreamID: downstream.id};
   }
-  function validate(b) {
+  function validate(b,depth=0) {
     if (!b || b.version !== 1 || typeof b.id !== 'string' || typeof b.title !== 'string' || !Object.hasOwn(F.modes,b.mode)
       || !Array.isArray(b.nodes) || !Array.isArray(b.edges) || b.nodes.length > 5000 || b.edges.length > 20000
       || !b.view || !finite(b.view.x, -1e7, 1e7) || !finite(b.view.y, -1e7, 1e7) || !finite(b.view.zoom, .2, 3)) throw Error('Invalid board format or unsupported version.');
     if(b.appearance!==undefined&&(!b.appearance||!colour(b.appearance.background)||!colour(b.appearance.gridColour)||!finite(b.appearance.gridSize,8,100)||typeof b.appearance.showGrid!=='boolean'))throw Error('Invalid canvas appearance.');
     if(b.mindmapDirection!==undefined&&!['horizontal','vertical'].includes(b.mindmapDirection))throw Error('Invalid mind map direction.');
+    if(b.templateBlueprint!==undefined){if(depth||!b.templateBlueprint?.templateDraft||b.templateBlueprint.nodes?.length>40||b.templateBlueprint.edges?.length>80)throw Error('Invalid saved template instructions.');validate(b.templateBlueprint,1);if(b.templateBlueprint.nodes.some(n=>n.link||n.kind||n.objectType))throw Error('Saved template instructions must be source-free.');}
     if(b.templateDraft!==undefined&&typeof b.templateDraft!=='boolean')throw Error('Invalid template state.');
     if(b.templateSourceID!==undefined&&(!b.templateDraft||typeof b.templateSourceID!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(b.templateSourceID)||typeof b.templateSourceName!=='string'||!b.templateSourceName.trim()||b.templateSourceName.length>100))throw Error('Invalid template editing source.');
     if(b.templateDefaultMode!==undefined&&(!b.templateDraft||!F.structured.has(b.templateDefaultMode)||b.mode!==b.templateDefaultMode||!Number.isSafeInteger(b.templateDefaultRevision)||b.templateDefaultRevision<0))throw Error('Invalid default template editor.');
@@ -74,7 +75,7 @@
         || (n.synthesisType !== undefined && !['Claim','Finding','Counterargument','Proves','Disproves','Limitation','Definition','Theory','Alternative','Justification','Example'].includes(n.synthesisType))
         || (n.topicHeading !== undefined && (typeof n.topicHeading!=='string'||n.topicHeading.length>100))
         || (n.layoutOverrides !== undefined && (!n.layoutOverrides || typeof n.layoutOverrides!=='object' || Array.isArray(n.layoutOverrides)
-          || Object.entries(n.layoutOverrides).some(([key,position])=>!['mindmap-horizontal','mindmap-vertical','conceptmap'].includes(key)||!validPoint(position))))
+          || Object.entries(n.layoutOverrides).some(([key,position])=>!['mindmap-horizontal','mindmap-vertical','conceptmap','researchdesign','researchreview','affinity','debate'].includes(key)||!validPoint(position))))
         || (n.pattern !== undefined && !['solid', 'dashed', 'dotted'].includes(n.pattern))
         || (n.fillMode !== undefined && !['filled', 'partial', 'outline'].includes(n.fillMode))
         || (n.kind === 'note' && !n.link)
@@ -83,9 +84,9 @@
       O.validate(n);
       if(n.organization!==undefined){
         const o=n.organization;
-        if(!o||typeof o!=='object'||Array.isArray(o)||Object.keys(o).some(k=>!['evidenceRole','matrixRow','matrixColumn','timelineDate','literatureGroup','processStep'].includes(k))
+        if(!o||typeof o!=='object'||Array.isArray(o)||Object.keys(o).some(k=>!['evidenceRole','matrixRow','matrixColumn','timelineDate','literatureGroup','processStep','researchSection','affinityGroup'].includes(k))
           ||o.evidenceRole!==undefined&&!['claim','support','critical','unresolved'].includes(o.evidenceRole)
-          ||['matrixRow','matrixColumn','literatureGroup'].some(k=>o[k]!==undefined&&(typeof o[k]!=='string'||o[k].length>100))
+          ||['matrixRow','matrixColumn','literatureGroup','researchSection','affinityGroup'].some(k=>o[k]!==undefined&&(typeof o[k]!=='string'||o[k].length>100))
           ||o.timelineDate!==undefined&&(typeof o.timelineDate!=='string'||!/^(?:\d{4})(?:-\d{2}(?:-\d{2})?)?$/.test(o.timelineDate))
           ||o.processStep!==undefined&&(!Number.isInteger(o.processStep)||o.processStep<1||o.processStep>5000))throw Error('Invalid format placement.');
       }
@@ -166,9 +167,9 @@
     }
     return result;
   }
-  function layoutKey(b){return b.mode==='mindmap'?'mindmap-'+(b.mindmapDirection||'horizontal'):b.mode==='conceptmap'?'conceptmap':null;}
+  function layoutKey(b){return b.mode==='mindmap'?'mindmap-'+(b.mindmapDirection||'horizontal'):['conceptmap','researchdesign','researchreview','affinity','debate'].includes(b.mode)?b.mode:null;}
   function positions(b) {
-    const result=b.mode==='mindmap'?layout(b):F.structured.has(b.mode)?F.layout(b).positions:new Map(b.nodes.map(n=>[n.id,{x:n.x,y:n.y}]));
+    const result=['mindmap','debate'].includes(b.mode)?layout(b):F.structured.has(b.mode)?F.layout(b).positions:new Map(b.nodes.map(n=>[n.id,{x:n.x,y:n.y}]));
     const key=layoutKey(b);if(key)for(const n of b.nodes){const override=n.layoutOverrides?.[key];if(override)result.set(n.id,override);}
     return result;
   }
@@ -208,7 +209,7 @@
   }
   function edgeGeometry(b,e,a,c){
     if(e.source===null||e.target===null||!['mindmap','conceptmap'].includes(b.mode)&&e.routePoints?.length)return {style:e.style,sourceSide:e.sourceSide||'right',targetSide:e.targetSide||'left',routePoints:e.routePoints||[]};
-    if(b.mode==='mindmap'&&e.hierarchy&&e.sourceOffset===undefined&&e.targetOffset===undefined&&!a.layoutOverrides?.[layoutKey(b)]&&!c.layoutOverrides?.[layoutKey(b)]){
+    if(['mindmap','debate'].includes(b.mode)&&e.hierarchy&&e.sourceOffset===undefined&&e.targetOffset===undefined&&!a.layoutOverrides?.[layoutKey(b)]&&!c.layoutOverrides?.[layoutKey(b)]){
       const vertical=b.mindmapDirection==='vertical',forward=vertical?a.y<=c.y:a.x<=c.x;
       return {style:'straight',sourceSide:vertical?(forward?'bottom':'top'):(forward?'right':'left'),targetSide:vertical?(forward?'top':'bottom'):(forward?'left':'right'),routePoints:[]};
     }

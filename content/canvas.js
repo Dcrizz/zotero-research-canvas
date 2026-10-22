@@ -43,7 +43,7 @@ let workspace, explorer, objectTools;
 let customMeanings = [];
 let annotationAppearance={background:'#67b2e0',text:'#ffffff',rules:[]};
 let board, selection = null, undo = [], redo = [], revision = 0, savedRevision = -1;
-let cardTextUI=null;
+let cardTextUI=null,sourcePicker=null;
 let saveTimer, saveChain = Promise.resolve(), gesture = null, ready = false, attachmentHint = null, hoverAttachment = null;
 let noteFrame = null, noteOpening = false, refreshTimer, stopWatching, refreshJob = null, refreshAgain = false;
 let styleTarget = null, activeTool = null, styleAnchor = null;
@@ -275,7 +275,7 @@ function render() {
   for(const guide of M.formatGuides(board)){
     const group=svg('g',{class:'format-guide format-'+guide.kind});
     group.append(svg('rect',{x:guide.x,y:guide.y,width:guide.width,height:guide.height,rx:12}));
-    const title=svg('text',{x:guide.x+17,y:guide.y+31});title.textContent=guide.label;group.append(title);$('format-guides').append(group);
+    const title=svg('text',{x:guide.x+17,y:guide.y+31});if(guide.kind==='research-section'){const words=guide.label.split(' '),limit=Math.max(15,Math.floor((guide.width-34)/10));let line='',row=0;for(const word of words){if(line&&(line+' '+word).length>limit){const span=svg('tspan',{x:guide.x+17,dy:row?22:0});span.textContent=line;title.append(span);row++;line=word;}else line+=(line?' ':'')+word;}const span=svg('tspan',{x:guide.x+17,dy:row?22:0});span.textContent=line;title.append(span);}else title.textContent=guide.label;group.append(title);$('format-guides').append(group);
   }
   const existingCards = new Map([...$('cards').children].map(card => [card.dataset.id, card]));
   const currentIDs = new Set(board.nodes.map(n => n.id));
@@ -483,7 +483,7 @@ function updateVisualChoices() {
 function renderOrganizationPanel(){
   const panel=$('tools-organize'),n=selected();panel.replaceChildren();if(!n||!M.formatGuides(board).length)return;
   const title=html('strong');title.textContent='Place in '+$('mode').selectedOptions[0].textContent;panel.append(title);
-  const fields={evidence:[['evidenceRole','Role','select',[['','Automatic'],['claim','Claim'],['support','Supporting'],['critical','Critical'],['unresolved','Unresolved']]]],matrix:[['matrixRow','Source / row','text'],['matrixColumn','Theme / column','text']],timeline:[['timelineDate','Date (YYYY or YYYY-MM-DD)','text']],literature:[['literatureGroup','Concept / group','text']],process:[['processStep','Step number','number']]}[board.mode]||[];
+  const fields=board.mode==='affinity'?[['affinityGroup','Theme / group','text']]:CanvasFormats.researchSections[board.mode]?[['researchSection','Research section','select',[['','Automatic'],...CanvasFormats.researchSections[board.mode]]]]:{evidence:[['evidenceRole','Role','select',[['','Automatic'],['claim','Claim'],['support','Supporting'],['critical','Critical'],['unresolved','Unresolved']]]],matrix:[['matrixRow','Source / row','text'],['matrixColumn','Theme / column','text']],timeline:[['timelineDate','Date (YYYY or YYYY-MM-DD)','text']],literature:[['literatureGroup','Concept / group','text']],process:[['processStep','Step number','number']]}[board.mode]||[];
   for(const [key,name,type,options]of fields){const label=html('label');label.textContent=name;const input=html(type==='select'?'select':'input');if(type==='select')for(const [value,text]of options){const option=html('option');option.value=value;option.textContent=text;input.append(option);}else{input.type=type;input.maxLength=100;if(type==='number'){input.min='1';input.max='5000';}}
     input.value=n.organization?.[key]??'';input.setAttribute('aria-label',name);input.onchange=()=>{const value=input.value.trim();if(key==='timelineDate'&&value&&!/^\d{4}(?:-\d{2}(?:-\d{2})?)?$/.test(value)){status('Use YYYY, YYYY-MM or YYYY-MM-DD.',true);return;}if(key==='processStep'&&value&&(!Number.isInteger(Number(value))||Number(value)<1||Number(value)>5000)){status('Choose a step from 1 to 5000.',true);return;}checkpoint();n.organization||={};if(value)n.organization[key]=key==='processStep'?Number(value):value;else delete n.organization[key];if(!Object.keys(n.organization).length)delete n.organization;changed();render();fit();};label.append(input);panel.append(label);}
 }
@@ -496,7 +496,7 @@ function openStyles(kind, id, anchor = null) {
   updateVisualChoices();
   $('style-popover').hidden = true;
   const bar = $('style-toolbar'); bar.replaceChildren();
-  for (const [key, title, path] of [...(kind==='node'&&selected().junction?[]:toolSpecs[kind]),...(kind==='node'?[['copy','Copy card','M8 8h12v12H8z M4 16H2V2h14v2'],['paste','Paste cards','M8 4h8v4H8z M6 6H4v16h16V6h-2']]:[]),...(kind==='edge'?[['junction','Add junction at this point','M12 3v18 M3 12h18 M8 8a4 4 0 1 0 8 8a4 4 0 1 0-8-8']]:[]),...(kind==='node'&&!selected().junction&&CanvasFormats.structured.has(board.mode)?[['organize','Place in view','M4 5h16 M4 12h16 M4 19h16 M8 3v18']]:[]),...(kind==='node'&&selected().objectType==='table'?[['table','Edit table','M3 4h18v16H3z M3 9h18 M9 4v16 M15 4v16']]:[]),...(kind==='node'&&selected().counterexampleEvidence?[['counterevidence','View source explanation','M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h5']]:[]),...(kind==='edge'&&selected().aiEvidence?[['evidence','View connection explanation','M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h5']]:[]),['delete','Delete selection','M4 6h16 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7']]) {
+  for (const [key, title, path] of [...(kind==='node'&&selected().junction?[]:toolSpecs[kind]),...(kind==='node'?[['copy','Copy card','M8 8h12v12H8z M4 16H2V2h14v2'],['paste','Paste cards','M8 4h8v4H8z M6 6H4v16h16V6h-2']]:[]),...(kind==='edge'?[['junction','Add junction at this point','M12 3v18 M3 12h18 M8 8a4 4 0 1 0 8 8a4 4 0 1 0-8-8']]:[]),...(kind==='node'&&!selected().junction&&CanvasFormats.structured.has(board.mode)&&M.formatGuides(board).length?[['organize','Place in view','M4 5h16 M4 12h16 M4 19h16 M8 3v18']]:[]),...(kind==='node'&&selected().objectType==='table'?[['table','Edit table','M3 4h18v16H3z M3 9h18 M9 4v16 M15 4v16']]:[]),...(kind==='node'&&selected().counterexampleEvidence?[['counterevidence','View source explanation','M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h5']]:[]),...(kind==='edge'&&selected().aiEvidence?[['evidence','View connection explanation','M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h5']]:[]),['delete','Delete selection','M4 6h16 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7']]) {
     const button = html('button'); button.type = 'button'; button.dataset.tool = key;
     button.title = title; button.setAttribute('aria-label', title); button.setAttribute('aria-expanded', 'false');
     if (key === 'fill' || key === 'stroke') button.style.setProperty('--swatch', selected().colour);
@@ -698,7 +698,7 @@ async function switchBoard(id) {
   await closeNote();
   await flush(); const next = await checkTemplateEditor(await bridge.load(id)); board = next;
   selection = null; undo = []; redo = []; revision = 0; savedRevision = 0;
-  render(); inspector(); await refreshList(); $('undo').disabled = true; $('redo').disabled = true; status('Saved locally'); await refreshNotes();
+  render(); inspector(); await refreshList(); $('undo').disabled = true; $('redo').disabled = true; status('Saved locally'); await refreshNotes();bridge.recordNavigation?.({kind:'canvas',id:board.id});
 }
 async function checkTemplateEditor(next){if(next.templateDefaultMode&&bridge.listTemplates){const library=await bridge.listTemplates();if(next.templateDefaultRevision!==CanvasTemplates.revisionFor(library,next.templateDefaultMode)){delete next.templateDefaultMode;delete next.templateDefaultRevision;}}return next;}
 function defaultTemplatesReset(value,mode=null){let detached=false;for(const snapshot of [board,...undo,...redo])if(snapshot?.templateDefaultMode&&(!mode||snapshot.templateDefaultMode===mode)&&snapshot.templateDefaultRevision<value){delete snapshot.templateDefaultMode;delete snapshot.templateDefaultRevision;detached=true;}if(detached){changed();render();status('Defaults restored. Reopen a default template from Templates to edit it.');}}
@@ -781,7 +781,9 @@ function showAttachment(ev){
   const match=nearestAttachment(point(ev),exclude,18/board.view.zoom);hoverAttachment=match;attachmentHint.hidden=!match;
   if(match){attachmentHint.dataset.node=match.id;attachmentHint.dataset.side=match.side;attachmentHint.style.left=board.view.x+match.anchor.x*board.view.zoom+'px';attachmentHint.style.top=board.view.y+match.anchor.y*board.view.zoom+'px';attachmentHint.style.pointerEvents=gesture?'none':'auto';attachmentHint.setAttribute('aria-label','Connect '+board.nodes.find(n=>n.id===match.id).title+' at this edge position');}
 }
+function updateNavigation(state){$('nav-back').disabled=!state.back;$('nav-forward').disabled=!state.forward;}
 function bind() {
+  $('nav-back').onclick=act(()=>bridge.navigateHistory?.(-1));$('nav-forward').onclick=act(()=>bridge.navigateHistory?.(1));if(bridge.navigationState)updateNavigation(bridge.navigationState());
   attachmentHint=html('button');attachmentHint.type='button';attachmentHint.id='attachment-hint';attachmentHint.className='perimeter-port';attachmentHint.title='Drag to connect here; click to add a child; Alt-drag an edge to resize';attachmentHint.hidden=true;$('viewport').append(attachmentHint);
   attachmentHint.onpointerdown=ev=>{if(ev.button!==0||!hoverAttachment)return;ev.preventDefault();ev.stopPropagation();const at={...hoverAttachment};select('node',at.id);checkpoint();gesture={type:'connect',id:at.id,side:at.side,offset:at.offset,start:point(ev),pointer:ev.pointerId};attachmentHint.hidden=true;$('viewport').setPointerCapture(ev.pointerId);};
   $('viewport').addEventListener('pointerleave',()=>{if(!gesture)attachmentHint.hidden=true;});
@@ -881,11 +883,7 @@ function bind() {
     if (!parent) { status('Select a parent card first.'); return; }
     checkpoint(); createChild(parent);
   };
-  $('add-zotero').onclick = act(async () => {
-    const items = await bridge.selected();
-    if (!items.length) { status('Select notes or references in the Zotero library first.'); return; }
-    addItems(items, (60 - board.view.x) / board.view.zoom, (60 - board.view.y) / board.view.zoom); fit();
-  });
+  $('add-zotero').onclick=()=>sourcePicker.open();
   const modeChoices=CanvasChoices.attach($('mode'),{label:'View mode',layout:'list'}),modePicker=html('div'),modeToggle=html('button');
   modePicker.id='mode-picker';modeToggle.id='mode-toggle';modeToggle.type='button';modeToggle.setAttribute('aria-haspopup','true');modeToggle.setAttribute('aria-expanded','false');modeToggle.setAttribute('aria-label','Choose canvas format');
   modeChoices.group.replaceWith(modePicker);modePicker.append(modeToggle,modeChoices.group);modeChoices.group.hidden=true;
@@ -1053,7 +1051,7 @@ async function acceptConnection(row,meta){
 }
 async function rejectConnection(row){checkpoint();const rejection={source:row.source,target:row.target,sourceSignature:row.sourceSignature,targetSignature:row.targetSignature};board.connectionRejections=[...(board.connectionRejections||[]).filter(r=>CanvasConnections.pair(r.source,r.target)!==CanvasConnections.pair(row.source,row.target)),rejection].slice(-500);changed();await flush();}
 async function createBoard(title='Untitled board'){
-  await saveInlineNotes(true);await closeNote();await flush();const next=M.board(title);await bridge.save(next);board=next;revision=savedRevision=0;selection=null;undo=[];redo=[];await refreshList();render();inspector();status('Saved locally');return next.id;
+  await saveInlineNotes(true);await closeNote();await flush();const next=M.board(title);await bridge.save(next);board=next;revision=savedRevision=0;selection=null;undo=[];redo=[];await refreshList();render();inspector();status('Saved locally');bridge.recordNavigation?.({kind:'canvas',id:board.id});return next.id;
 }
 async function renameBoard(id,title){
   if(id===board.id){checkpoint();board.title=title;changed();render();await flush();}else{const data=await bridge.load(id);data.title=title;await bridge.save(data);}await refreshList();
@@ -1077,7 +1075,20 @@ async function drawCanvasPreview(n,body){
 }
 const embedRefresh=setInterval(()=>{if(!ready||document.hidden)return;for(const n of board.nodes.filter(n=>n.kind==='canvas')){const body=[...$('cards').children].find(c=>c.dataset.id===n.id)?.querySelector('.body');if(body)drawCanvasPreview(n,body).catch(report);}},2500);
 window.addEventListener('unload',()=>clearInterval(embedRefresh),{once:true});
-window.CanvasApp = {defaultTemplatesReset,placeObject:(spec,at)=>objectTools.place(spec,at),updateDefaults:value=>M.setDefaults(value),refreshMeanings:values=>{customMeanings=values.map(p=>M.meaning(p.id,p.title,p));renderMeanings();}, obsidianBundle:()=>workspace.obsidianBundle(), createBoard, openBoard:switchBoard, renameBoard, trashBoard, insertCanvas, refreshExplorer:()=>explorer.refresh(), jumpTo, restoreBoard, exportData: options => workspace.exportData(options), async receiveItems(id, items) { await refreshList(); if (board.id !== id) await switchBoard(id); addItems(items, (80 - board.view.x) / board.view.zoom, (100 - board.view.y) / board.view.zoom); fit(); await flush(); },async flush() { finishLabel(); await saveInlineNotes(); await refreshNotes(); await Promise.allSettled([...relationTasks]); await flush(); }, closeNote, closeInlineNotes: () => saveInlineNotes(true), closeNoteMenu() { if (noteMenuID) { noteMenuID = null; render(); } }, noteStatus, previewWarning, previewRevoked(id) { const slot = [...$('cards').querySelectorAll('.note-preview')].find(el => el.closest('.card').dataset.id === id); if (slot && slot.dataset.editable !== 'false') { slot.dataset.editing = 'false'; slot.dataset.editable = 'false'; render(); } }, styleNote(id) { if (board.nodes.some(n => n.id === id && n.kind === 'note')) openStyles('node', id); }, getBoard: () => board ? M.clone(board) : null};
+async function applyPickedSources(ids,focus,onProgress){
+  cardTextUI?.close();finishLabel();await saveInlineNotes();await flush();const active=board,rev=revision;
+  const instructions=board.templateDraft?M.clone(board):board.templateBlueprint?M.clone(board.templateBlueprint):null;
+  if(instructions){
+    if(!bridge.fillTemplateFromSources)throw Error('Source selection and AI filling are available in the installed Zotero plugin.');
+    instructions.id=board.id;instructions.title=board.title;instructions.view=M.clone(board.view);
+    const result=await bridge.fillTemplateFromSources(instructions,ids,focus,step=>{if(board!==active||revision!==rev)throw Error('The canvas changed. No generated cards were applied.');onProgress('Analysing '+(step.number===null?'cards':'step '+step.number)+' ('+step.index+'/'+step.total+')…');});
+    if(board!==active||revision!==rev)throw Error('The canvas changed. No generated cards were applied.');
+    checkpoint();result.board.mode=active.mode;board=M.validate(result.board);changed();render();fit();await flush();if(board.templateOmissions?.length)showTemplateOmissions();status(result.filled+' cards filled from selected sources; '+(board.templateOmissions?.length||0)+' conditional branches omitted.');
+  }else{
+    if(!bridge.sourceCards)throw Error('Source selection is available in the installed Zotero plugin.');const items=await bridge.sourceCards(ids);if(board!==active||revision!==rev)throw Error('The canvas changed. Choose sources again.');addItems(items,(60-board.view.x)/board.view.zoom,(60-board.view.y)/board.view.zoom);fit();await flush();
+  }
+}
+window.CanvasApp = {updateNavigation,defaultTemplatesReset,placeObject:(spec,at)=>objectTools.place(spec,at),updateDefaults:value=>M.setDefaults(value),refreshMeanings:values=>{customMeanings=values.map(p=>M.meaning(p.id,p.title,p));renderMeanings();}, obsidianBundle:()=>workspace.obsidianBundle(), createBoard, openBoard:switchBoard, renameBoard, trashBoard, insertCanvas, refreshExplorer:()=>explorer.refresh(), jumpTo, restoreBoard, exportData: options => workspace.exportData(options), async receiveItems(id, items) { await refreshList(); if (board.id !== id) await switchBoard(id); addItems(items, (80 - board.view.x) / board.view.zoom, (100 - board.view.y) / board.view.zoom); fit(); await flush(); },async flush() { finishLabel(); await saveInlineNotes(); await refreshNotes(); await Promise.allSettled([...relationTasks]); await flush(); }, closeNote, closeInlineNotes: () => saveInlineNotes(true), closeNoteMenu() { if (noteMenuID) { noteMenuID = null; render(); } }, noteStatus, previewWarning, previewRevoked(id) { const slot = [...$('cards').querySelectorAll('.note-preview')].find(el => el.closest('.card').dataset.id === id); if (slot && slot.dataset.editable !== 'false') { slot.dataset.editing = 'false'; slot.dataset.editable = 'false'; render(); } }, styleNote(id) { if (board.nodes.some(n => n.id === id && n.kind === 'note')) openStyles('node', id); }, getBoard: () => board ? M.clone(board) : null};
 (async () => {
   try {
     if(bridge.getSettings)M.setDefaults(await bridge.getSettings());
@@ -1090,6 +1101,7 @@ window.CanvasApp = {defaultTemplatesReset,placeObject:(spec,at)=>objectTools.pla
     $('search-close').onclick = () => { searchRequest++; $('search-results').hidden = true; $('search-status').textContent = ''; $('search-close').hidden = true; };
     if(bridge.annotationAppearance)annotationAppearance=await bridge.annotationAppearance();
     if(bridge.listMeanings)customMeanings=(await bridge.listMeanings()).map(p=>M.meaning(p.id,p.title,p));
+    sourcePicker=window.CanvasSourcePicker({bridge,element:html,getBoard:()=>board,apply:applyPickedSources,report});
     workspace = window.CanvasWorkspace({getBoard: () => board, copyCards,pasteCards, addCounterexample, addCard:addNode, hideStyles, acceptConnection, rejectConnection, checkpoint, changed, redraw: render, point, element: html, model: M, viewport: $('viewport'), select, report, fit, saveInlineNotes, selected, bridge, jumpTo, flush, restoreBoard, status, canvasMarkup: async n=>{const body=[...$('cards').children].find(c=>c.dataset.id===n.id)?.querySelector('.body');if(!body)return '';await drawCanvasPreview(n,body);const image=body.querySelector('svg');if(!image){const text=html('p');text.textContent=body.textContent;return text.outerHTML;}const data=await CanvasExport.png({svg:new XMLSerializer().serializeToString(image),width:n.width-30,height:n.height-70});const picture=html('img');picture.src=data;return picture.outerHTML;}, annotationMarkup: n => new DOMParser().parseFromString(annotationDocument(n),'text/html').querySelector('.ProseMirror').innerHTML});
     cardTextUI=window.CanvasCardTextUI({getBoard:()=>board,checkpoint,changed,hideStyles,selectText:id=>{selection={kind:'node',id};for(const card of $('cards').children)card.classList.toggle('selected',card.dataset.id===id);inspector();},mirror:n=>{if(selection?.id===n.id){$('text').value=n.text;$('title').value=n.title;}}});
     window.CanvasTemplateAuthorUI({element:html,getBoard:()=>M.clone(board),bridge,report,model:M,status,prepare:async()=>{finishLabel();await saveInlineNotes();await flush();},apply:async next=>{checkpoint();board=next;selection=null;changed();render();inspector();fit();await flush();}});

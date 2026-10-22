@@ -1,6 +1,6 @@
 {
   "name": "zotero-canvas",
-  "version": "0.36.0",
+  "version": "0.37.0",
   "private": true,
   "scripts": {
     "test": "node --test test/*.test.cjs",
@@ -19,6 +19,7 @@
     "test:dashboard": "node test/dashboard-ui.cjs",
     "test:templates": "node test/template-ui.cjs",
     "test:preferences": "node test/preferences-ui.cjs",
+    "test:sources": "node test/source-picker-ui.cjs",
     "test:text": "node test/card-text-ui.cjs"
   },
   "devDependencies": {

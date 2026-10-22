@@ -1,6 +1,6 @@
 (function(root){
   'use strict';
-  const formats=['conceptmap','evidence','matrix','timeline','literature','process'];
+  const formats=['conceptmap','evidence','matrix','timeline','literature','process','researchdesign','researchreview','affinity','debate'];
   const modes=['canvas','mindmap',...formats];
   const specs={
     conceptmap:{nodes:[
@@ -43,15 +43,47 @@
       ['feedback','Feedback','Does the outcome feed into an earlier step? Explain the loop if documented.',1050,300,'#e5f2f5',{processStep:5}]],
       edges:[['input','action','Leads to','#4679a3'],['action','decision','Leads to','#4679a3'],['decision','outcome','Produces','#287b63'],['outcome','feedback','Feedback','#4a8290'],['feedback','action','Revises','#4a8290']]}
   };
-  function assertMode(mode){if(!formats.includes(mode))throw Error('Choose one of the six structured canvas formats.');}
+  specs.researchdesign={nodes:[
+    ['problem','Research problem',"## Phenomenon / problem\nExplain the phenomenon or problem addressed by the selected research. State the scope without inventing a new research project. Distinguish the author's problem from the user's proposed study.",0,0,'#e6edf8',{researchSection:'problem'}],
+    ['literature','Literature',"Only if: a supplied passage explicitly positions the study in relation to prior literature\n## Literature\nExplain one relevant prior debate or body of work. Attribute the position and cite the selected source; do not invent bibliographic references.",0,0,'#e5f1ea',{researchSection:'literature'}],
+    ['questions','Research questions / hypotheses',"Only if: a supplied passage states a research question, objective or hypothesis\n## Questions / hypotheses\nReport the stated question or hypothesis and distinguish it from a finding. Do not generate an unsupported hypothesis.",0,0,'#e6edf8',{researchSection:'questions'}],
+    ['theory','Theory and concepts',"Only if: a supplied passage explicitly identifies a theory, framework or central concept\n## Theory and concepts\nExplain the concept or theoretical framework in the author's terms and identify its role in the study.",0,0,'#eee6f2',{researchSection:'theory'}],
+    ['assumptions','Assumptions / paradigm',"Only if: a supplied passage explicitly describes an epistemological, ontological or theoretical assumption\n## Assumptions / paradigm\nExplain the stated assumption or paradigm. Do not infer a philosophical position from the method name alone.",0,0,'#fff0d9',{researchSection:'assumptions'}],
+    ['methods','Methodology / design / methods',"Only if: a supplied passage describes the study design, methodology or analytical methods\n## Methods\nReport the methodological approach and why it was used, when the author states a justification. Retain limitations and distinguish methodology from specific procedures.",0,0,'#e5f2f5',{researchSection:'methods'}],
+    ['sample','Sample / context',"Only if: a supplied passage describes the sample, corpus, participants or research context\n## Sample and context\nDescribe selection, scale and setting, including any explicit boundaries on generalisation. Do not invent missing sample sizes.",0,0,'#e5f2f5',{researchSection:'sample'}],
+    ['observations','Observations and arguments',"Only if: a supplied passage reports a substantive observation, finding or argument\n## Observations and arguments\nExplain one source-backed observation or argument. Distinguish observed evidence from the author's interpretation.",0,0,'#e5f1ea',{researchSection:'observations'}],
+    ['contributions','Contributions',"Only if: a supplied passage explicitly identifies a contribution or significance of the study\n## Contribution\nExplain the stated theoretical, empirical or methodological contribution and its scope. Do not treat a claimed contribution as established novelty.",0,0,'#eef1df',{researchSection:'contributions'}]
+  ],edges:[]};
+  specs.researchreview={nodes:[
+    ['overview','Review scope',"## Review focus\nSummarise the research problem or question addressed in a supplied source passage. Establish the scope of this review. The remaining sections assess evidence in the supplied material; do not treat omitted sections as proof of absence from the entire literature.",0,0,'#e6edf8',{researchSection:'overview'}],
+    ['supported','Supported assumptions / claims',"Only if: a supplied passage explicitly reports evidence supporting a prior claim or hypothesis\n## Supported claim\nIdentify the claim and explain what supports it within the study's scope. Preserve uncertainty and do not imply universal validation or proof.",0,0,'#e5f1ea',{researchSection:'supported'}],
+    ['challenged','Challenged claims',"Only if: a supplied passage explicitly challenges, qualifies or contradicts a claim, assumption or theory\n## Challenge / qualification\nIdentify the challenged position and the counterevidence or reasoning. Distinguish disagreement, qualification and refutation.",0,0,'#f8e9e7',{researchSection:'challenged'}],
+    ['emergent','Emergent findings',"Only if: a supplied passage identifies an unexpected observation, emergent finding or unanticipated insight\n## Emergent finding\nExplain what emerged and why it was unexpected when stated. Do not label a routine finding as unexpected without source support.",0,0,'#e5f2f5',{researchSection:'emergent'}],
+    ['questions','Open questions / future inquiry',"Only if: a supplied passage identifies an unanswered question, ambiguity, limitation or future research direction\n## Open question\nExplain the stated gap or uncertainty and the suggested inquiry. Silence in the selected excerpts does not establish a research gap.",0,0,'#fff0d9',{researchSection:'questions'}],
+    ['implications','Theoretical / methodological implications',"Only if: a supplied passage explicitly discusses implications for theory, methodology or research design\n## Implications\nExplain how the findings bear on theory or methods, preserving scope and qualifications. Distinguish the author's proposal from an established result.",0,0,'#eee6f2',{researchSection:'implications'}]
+  ],edges:[]};
+  specs.affinity={nodes:[
+    ['observation','Initial observation','## Observation\nIdentify one important observation in the selected source material. Keep its context and exact supporting excerpt. This is a starting point for grouping observations, not proof of a recurring theme.',0,0,'#e6edf8',{affinityGroup:'Initial observations'}],
+    ['shared','Shared theme','Only if: the supplied passages explicitly develop a relevant theme or pattern\n## Theme\nExplain a source-backed theme, preserving attribution and context. Do not imply agreement across all selected authors from one excerpt.',0,0,'#e5f1ea',{affinityGroup:'Themes and patterns'}],
+    ['exception','Difference / exception','Only if: a supplied passage provides a difference, qualification or negative case relevant to the theme\n## Difference or exception\nExplain how this observation differs from the theme. Keep it visible rather than forcing it into an apparent consensus.',0,0,'#f8e9e7',{affinityGroup:'Differences and exceptions'}],
+    ['uncertain','Unresolved observation','Only if: a supplied passage identifies an uncertainty or ambiguous observation\n## Unresolved observation\nDescribe what remains unclear and why. Retain the source excerpt so the user can regroup the observation later.',0,0,'#fff0d9',{affinityGroup:'Unsorted observations'}]
+  ],edges:[]};
+  specs.debate={nodes:[
+    ['claim','Central claim','## Claim\nState one precise, source-attributed claim or proposition to examine. Preserve its scope and avoid presenting it as the consensus of all sources.',0,0,'#e6edf8'],
+    ['support','Supporting evidence','Only if: a supplied passage gives evidence or reasoning supporting the central claim\n## Support\nExplain the supporting evidence and its limits. Distinguish an assertion from a reported finding.',0,0,'#e5f1ea'],
+    ['challenge','Counterargument','Only if: a supplied passage directly challenges or contradicts the central claim\n## Counterargument\nAttribute the challenge and explain the disagreement. Shared terminology alone does not establish opposition.',0,0,'#f8e9e7'],
+    ['qualification','Qualification / limitation','Only if: a supplied passage identifies a limitation or condition relevant to the central claim\n## Qualification\nExplain the boundary, condition or limitation without turning a qualified claim into a simple true-or-false judgement.',0,0,'#fff0d9'],
+    ['reply','Reply to counterargument','Only if: a supplied passage explicitly answers the counterargument identified in another card\n## Reply\nExplain the stated reply, carefully distinguishing the original author, critic and responding author. Do not invent a rebuttal.',0,0,'#eee6f2']
+  ],edges:[['claim','support','Supported by','#287b63'],['claim','challenge','Challenged by','#b34747'],['claim','qualification','Qualified by','#b48539'],['challenge','reply','Answered by','#98649a']]};
+  function assertMode(mode){if(!formats.includes(mode))throw Error('Choose an available structured canvas format.');}
   function builtIn(M,mode,title){
     assertMode(mode);const b=M.board(title);b.mode=mode;b.templateDraft=true;
     const ids=new Map();for(const [key,label,instruction,x,y,colour,organization] of specs[mode].nodes){
-      const n=M.node(x,y,label,instruction);n.width=280;n.height=190;n.colour=colour;n.border='#536b69';if(organization)n.organization=organization;
+      const n=M.node(x,y,label,instruction);n.width=['researchdesign','researchreview'].includes(mode)?320:280;n.height=['researchdesign','researchreview'].includes(mode)?240:190;n.colour=colour;n.border='#536b69';if(organization)n.organization=organization;
       if(mode==='conceptmap')n.layoutOverrides={conceptmap:{x,y}};
       ids.set(key,n.id);b.nodes.push(n);
     }
-    for(const [from,to,label,colour] of specs[mode].edges){const e=M.edge(ids.get(from),ids.get(to));Object.assign(e,{label,colour,style:'straight',hierarchy:mode==='conceptmap'||mode==='process'});b.edges.push(e);}
+    for(const [from,to,label,colour] of specs[mode].edges){const e=M.edge(ids.get(from),ids.get(to));Object.assign(e,{label,colour,style:'straight',hierarchy:mode==='conceptmap'||mode==='process'||mode==='debate'});b.edges.push(e);}
     if(mode==='timeline'){
       let previous=null;
       for(const [key,,,,,organization] of specs.timeline.nodes){
@@ -225,6 +257,7 @@
       for(const source of repeated){const from=left.get(source)||left.get(''),to=right.get(source)||right.get('');if(!from||!to)continue;result.edges.push({...M.clone(edge),id:globalThis.crypto.randomUUID(),source:from,target:to});}
     }
     if(result.frames)result.frames=result.frames.map(frame=>({...frame,members:frame.members.flatMap(id=>[...(mapping.get(id)?.values()||[])])})).filter(frame=>frame.members.length);
+    result.templateBlueprint=M.clone(board);delete result.templateBlueprint.templateBlueprint;
     result.templateDraft=false;
     delete result.templateSourceID;delete result.templateSourceName;delete result.templateDefaultMode;delete result.templateDefaultRevision;
     if(checked.omissions?.length)result.templateOmissions=checked.omissions.map(({task,reason})=>({title:task.node.title,condition:condition(task.node),reason,source:task.source||''}));

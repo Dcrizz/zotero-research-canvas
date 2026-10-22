@@ -23,3 +23,9 @@ Keyword search includes Zotero titles, notes, tags and annotations. Search type 
 ## Export and recovery
 
 Export editable JSON; create static SVG, PNG or PDF of the full canvas or a selected frame; send an editable snapshot to Obsidian Canvas. Obsidian exports preserve linked-source notes and embedded assets but use Obsidian's own typography and connector rendering. Automatic local version snapshots support restoring earlier arrangements. Canvas files are local; simultaneous editing of one board file by multiple processes is not supported.
+
+### Academic formats and source selection
+
+Research Design, Research Review, Affinity Diagram and Debate Tree are built-in formats with editable default instructions. Research panels and affinity groups retain source citations, while debate branches separate support, challenges and replies. Missing optional evidence is reported rather than invented.
+
+Add Sources browses Zotero libraries and collections with title/author/year search and persistent selection of up to eight references. Populate template runs the current instructions; filled canvases retain a source-free instruction blueprint for reruns. Undo returns to the previous result. Ordinary freeform canvases receive linked reference cards instead. The older Fill with AI action still uses the selection in Zotero's main window.

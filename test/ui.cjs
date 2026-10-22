@@ -9,7 +9,7 @@ async function openText(page){if(await page.locator('#tools-text').isVisible())r
 (async () => {
   const server = http.createServer((req, res) => {
     const name = req.url.split('?')[0] === '/' ? 'canvas.xhtml' : req.url.split('?')[0].slice(1);
-    if (!['canvas.xhtml', 'canvas.css', 'choices.js', 'choices.css', 'canvas.js', 'card-text.js', 'card-text-ui.js', 'card-clipboard.js', 'template-author.js', 'template-author-ui.js', 'objects.js', 'object-presets.js', 'objects-ui.js', 'formats.js', 'model.js', 'templates.js', 'research.js', 'workspace-tools.js', 'export.js', 'library.js', 'explorer.js', 'settings.js', 'obsidian.js', 'connections.js', 'connection-ui.js', 'counterexamples.js', 'counterexample-ui.js', 'canvas-entry.png', 'icon.png'].includes(name)) { res.writeHead(404).end(); return; }
+    if (!['canvas.xhtml', 'canvas.css', 'choices.js', 'choices.css', 'canvas.js', 'source-picker.js', 'card-text.js', 'card-text-ui.js', 'card-clipboard.js', 'template-author.js', 'template-author-ui.js', 'objects.js', 'object-presets.js', 'objects-ui.js', 'formats.js', 'model.js', 'templates.js', 'research.js', 'workspace-tools.js', 'export.js', 'library.js', 'explorer.js', 'settings.js', 'obsidian.js', 'connections.js', 'connection-ui.js', 'counterexamples.js', 'counterexample-ui.js', 'canvas-entry.png', 'icon.png'].includes(name)) { res.writeHead(404).end(); return; }
     res.setHeader('Content-Type', name.endsWith('.xhtml') ? 'application/xhtml+xml' : name.endsWith('.css') ? 'text/css' : name.endsWith('.png') ? 'image/png' : 'text/javascript');
     res.end(fs.readFileSync(path.join(root, name)));
   }).listen(0, '127.0.0.1');

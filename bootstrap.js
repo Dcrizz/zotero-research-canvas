@@ -14,6 +14,7 @@ async function startup({rootURI}) {
   await Zotero.initializationPromise;
   chromeHandle = Cc['@mozilla.org/addons/addon-manager-startup;1'].getService(Ci.amIAddonManagerStartup)
     .registerChrome(Services.io.newURI(rootURI + 'manifest.json'), [['content', 'research-canvas', 'content/']]);
+  Services.scriptloader.loadSubScript(rootURI + 'content/navigation.js', this);
   Services.scriptloader.loadSubScript(rootURI + 'content/connections.js', this);
   Services.scriptloader.loadSubScript(rootURI + 'content/counterexamples.js', this);
   Services.scriptloader.loadSubScript(rootURI + 'content/counterexample-library.js', this);
@@ -29,6 +30,22 @@ async function startup({rootURI}) {
   const directory = PathUtils.join(Zotero.DataDirectory.dir, 'research-canvas');
   await IOUtils.makeDirectory(directory, {ignoreExisting: true});
   let queue = Promise.resolve();
+  const navigation=CanvasNavigation.create();let navigating=false;
+  function updateNavigation(){const state=navigation.state();if(canvasWindow&&!canvasWindow.closed)canvasWindow.CanvasApp?.updateNavigation(state);if(dashboardWindow&&!dashboardWindow.closed)dashboardWindow.CanvasDashboard?.updateNavigation(state);}
+  function setWindowVisible(win,visible){if(!win||win.closed)return;win.docShell.treeOwner.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIBaseWindow).visibility=visible;}
+  async function showRoute(route,record=true){
+    if(navigating)throw Error('Navigation is already in progress.');navigating=true;
+    try{
+      if(canvasWindow&&!canvasWindow.closed)await canvasWindow.CanvasApp?.flush();
+      if(route.kind==='canvas'){
+        const win=await ensureCanvas(Zotero.getMainWindow());if(route.id&&(route.reload||route.id!==win.CanvasApp.getBoard().id))await win.CanvasApp.openBoard(route.id);route={kind:'canvas',id:win.CanvasApp.getBoard().id};
+        setWindowVisible(win,true);setWindowVisible(dashboardWindow,false);win.focus();
+      }else{
+        const win=await ensureDashboard(Zotero.getMainWindow());await win.CanvasDashboard.showRoute(route.kind);setWindowVisible(win,true);setWindowVisible(canvasWindow,false);win.focus();
+      }
+      if(record)navigation.visit(route);updateNavigation();return route;
+    }finally{navigating=false;}
+  }
   const connectionJobs=new Map();
   const credentialOrigin='https://research-canvas.invalid',credentialRealm='Research Canvas AI';
   const savedAIKeys=()=>Services.logins.findLogins(credentialOrigin,null,credentialRealm).filter(login=>login.username==='research-canvas');
@@ -134,17 +151,12 @@ async function startup({rootURI}) {
     writeCanvasClipboard(text){Cc['@mozilla.org/widget/clipboardhelper;1'].getService(Ci.nsIClipboardHelper).copyString(text);},
     readCanvasClipboard(){const transfer=Cc['@mozilla.org/widget/transferable;1'].createInstance(Ci.nsITransferable);transfer.init(null);transfer.addDataFlavor('text/plain');Cc['@mozilla.org/widget/clipboard;1'].getService(Ci.nsIClipboard).getData(transfer,Ci.nsIClipboard.kGlobalClipboard);const value={};transfer.getTransferData('text/plain',value);return value.value.QueryInterface(Ci.nsISupportsString).data;},
     directory,
-    openDashboard(){
-      const menu=Zotero.getMainWindow().document.getElementById('research-canvas-dashboard-menu');
-      if(!menu)throw Error('The Zotero Canvas dashboard is unavailable.');
-      menu.doCommand();
-    },
-    async openTemplateManager(){
-      this.openDashboard();
-      for(let i=0;i<100&&!dashboardWindow?.CanvasDashboard?.openTemplates;i++)await Zotero.Promise.delay(50);
-      if(!dashboardWindow?.CanvasDashboard?.openTemplates)throw Error('The dashboard did not finish opening. Please try again.');
-      await dashboardWindow.CanvasDashboard.openTemplates();dashboardWindow.focus();
-    },
+    openDashboard(){return showRoute({kind:'dashboard'});},
+    openTemplateManager(){return showRoute({kind:'templates'});},
+    navigationState(){return navigation.state();},
+    recordNavigation(route){if(navigating)return;navigation.visit(route);updateNavigation();},
+    navigateTo(route){return showRoute(route);},
+    async navigateHistory(delta){const route=navigation.peek(delta);if(!route)return;await showRoute(route,false);navigation.move(delta);updateNavigation();},
     async auditEvidence(nodes){
       if(!Array.isArray(nodes)||nodes.length>500||nodes.some(n=>!n||typeof n.id!=='string'||!n.link))throw Error('Choose up to 500 linked cards for an evidence check.');
       const itemCache=new Map(),pageCache=new Map(),results=[];
@@ -378,6 +390,26 @@ async function startup({rootURI}) {
     async objectLibrary(){const path=PathUtils.join(directory,'settings','objects.json');return await IOUtils.exists(path)?CanvasObjects.library(await IOUtils.readJSON(path)):[];},
     saveObjectLibrary(values){const entries=CanvasObjects.library(values),operation=queue.then(async()=>{const dir=PathUtils.join(directory,'settings');await IOUtils.makeDirectory(dir,{ignoreExisting:true});const path=PathUtils.join(dir,'objects.json');await IOUtils.writeJSON(path,entries,{tmpPath:path+'.tmp',backupFile:path+'.bak'});});queue=operation.catch(error=>Zotero.logError(error));return operation;},
     openObjectLibraries(){Zotero.launchURL('https://libraries.excalidraw.com/');},
+    async sourceCatalog(){
+      return Zotero.Libraries.getAll().map(l=>({id:l.libraryID,name:l.name,collections:Zotero.Collections.getByLibrary(l.libraryID,true).map(c=>({id:c.id,name:c.name,parentID:c.parentID||null}))}));
+    },
+    async sourceItems({libraryID,collectionID=null,query='',offset=0}){
+      if(!Number.isSafeInteger(libraryID)||!Zotero.Libraries.get(libraryID)||typeof query!=='string'||query.length>300||!Number.isSafeInteger(offset)||offset<0)throw Error('Choose a Zotero library and a valid search.');
+      const search=new Zotero.Search();search.libraryID=libraryID;
+      for(const type of ['attachment','note','annotation'])search.addCondition('itemType','isNot',type);
+      if(collectionID!==null){const collection=Zotero.Collections.getByLibrary(libraryID,true).find(c=>c.id===collectionID);if(!collection)throw Error('The collection is no longer available.');search.addCondition('collection','is',collection.key);}
+      if(query.trim())search.addCondition('quicksearch-titleCreatorYear','contains',query.trim());
+      const ids=(await search.search()).sort((a,b)=>b-a),items=await Zotero.Items.getAsync(ids.slice(offset,offset+80));
+      return {total:ids.length,items:items.filter(i=>i&&!i.deleted&&i.isRegularItem()).map(i=>({id:i.id,title:i.getField('title')||i.key,author:i.getCreators().map(c=>c.lastName||c.name||'').filter(Boolean).join('; '),year:i.getField('date'),type:i.itemType}))};
+    },
+    async sourceCards(ids){
+      if(!Array.isArray(ids)||!ids.length||ids.length>8||ids.some(id=>!Number.isSafeInteger(id)||id<1))throw Error('Select 1–8 Zotero sources.');
+      const items=await Zotero.Items.getAsync([...new Set(ids)]);if(items.some(i=>!i||i.deleted||!i.isRegularItem()))throw Error('A selected source is no longer available.');return Promise.all(items.map(describe));
+    },
+    async fillTemplateFromSources(board,ids,focus='',progress=null){
+      if(!Array.isArray(ids)||!ids.length||ids.length>8||ids.some(id=>!Number.isSafeInteger(id)||id<1))throw Error('Select 1–8 Zotero sources.');
+      const items=await Zotero.Items.getAsync([...new Set(ids)]);if(items.some(i=>!i||i.deleted||!i.isRegularItem()))throw Error('A selected source is no longer available.');return this.fillTemplate(board,focus,progress,items);
+    },
     async selected() {
       const win = Zotero.getMainWindow();
       return Promise.all(win.ZoteroPane.getSelectedItems().map(item => describeDroppedItem(item)));
@@ -479,8 +511,8 @@ async function startup({rootURI}) {
     },progress=>onProgress?.(progress));
     return {board:CanvasTemplates.fill(CanvasModel,board,checked),filled:checked.entries.length,rejected:checked.rejected,unread:items.length-available.length};
   };
-  canvasBridge.dashboardOpenBoard=async id=>{const window=Zotero.getMainWindow(),win=await ensureCanvas(window);await win.CanvasApp.openBoard(id);win.focus();};
-  canvasBridge.dashboardCreateTemplate=async()=>{await canvasWindow?.CanvasApp?.flush();const library=await canvasBridge.listTemplates(),conditional=library.custom.find(row=>row.name.trim().toLocaleLowerCase()==='conditional branches example');const board=CanvasTemplates.createCustom(CanvasModel,conditional);board.id='template-draft-new';await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id);canvasWindow.document.getElementById('fit').click();await canvasWindow.CanvasApp.flush();return board.id;};
+  canvasBridge.dashboardOpenBoard=async(id,reload=false)=>showRoute({kind:'canvas',id,reload});
+  canvasBridge.dashboardCreateTemplate=async()=>{await canvasWindow?.CanvasApp?.flush();const library=await canvasBridge.listTemplates(),conditional=library.custom.find(row=>row.name.trim().toLocaleLowerCase()==='conditional branches example');const board=CanvasTemplates.createCustom(CanvasModel,conditional);board.id='template-draft-new';await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id,true);canvasWindow.document.getElementById('fit').click();await canvasWindow.CanvasApp.flush();return board.id;};
   canvasBridge.dashboardEditTemplate=async(mode,id)=>{
     await canvasWindow?.CanvasApp?.flush();
     if(!CanvasTemplates.modes.includes(mode)||id==='builtin'&&!CanvasTemplates.formats.includes(mode))throw Error('Choose an available template format.');
@@ -490,7 +522,7 @@ async function startup({rootURI}) {
     board.id='template-draft-'+(custom?custom.id:mode);
     if(custom){board.templateSourceID=custom.id;board.templateSourceName=custom.name;}
     else{board.templateDefaultMode=mode;board.templateDefaultRevision=CanvasTemplates.revisionFor(library,mode);}
-    await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id);return board.id;
+    await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id,true);return board.id;
   };
   canvasBridge.dashboardCreateBoard=async(title,mode,folderID=null,templateID=null)=>{
     if(!Object.hasOwn(CanvasFormats.modes,mode)||typeof title!=='string'||!title.trim()||title.length>200)throw Error('Invalid canvas details.');
@@ -527,17 +559,9 @@ function onMainWindowLoad({window}) {
   menu.id = 'research-canvas-menu'; menu.setAttribute('label', 'Zotero Canvas');
   menu.setAttribute('class', 'menuitem-iconic');
   menu.setAttribute('image', 'chrome://research-canvas/content/icon.png');
-  menu.addEventListener('command', () => {
-    if (canvasWindow && !canvasWindow.closed) { canvasWindow.focus(); return; }
-    canvasWindow = window.openDialog('chrome://research-canvas/content/canvas.xhtml', 'research-canvas',
-      'chrome,centerscreen,resizable,width=1250,height=820,dialog=no', canvasBridge);
-  });
+  menu.addEventListener('command',()=>canvasBridge.navigateTo({kind:'canvas'}).catch(error=>{Zotero.logError(error);Services.prompt.alert(window,'Canvas navigation',error.message);}));
   doc.getElementById('menu_ToolsPopup').appendChild(menu);
-  const openDashboard=()=>{
-    if(dashboardWindow&&!dashboardWindow.closed){dashboardWindow.focus();dashboardWindow.CanvasDashboard?.refresh();return;}
-    dashboardWindow=window.openDialog('chrome://research-canvas/content/dashboard.xhtml','zotero-canvas-dashboard',
-      'chrome,centerscreen,resizable,width=1320,height=860,dialog=no',canvasBridge);
-  };
+  const openDashboard=()=>canvasBridge.openDashboard().catch(error=>{Zotero.logError(error);Services.prompt.alert(window,'Canvas navigation',error.message);});
   const addLauncher=nav=>{
     if(!nav||doc.getElementById('research-canvas-launcher-'+nav.id))return;
     const holder=doc.createElementNS('http://www.w3.org/1999/xhtml','div');holder.id='research-canvas-launcher-'+nav.id;
@@ -578,7 +602,7 @@ function onMainWindowLoad({window}) {
 async function createCustomTemplateCanvas(window,items){
   if(items.length<1||items.length>8||items.some(item=>!item.isRegularItem()))throw Error('Select 1–8 Zotero sources first.');
   const library=await canvasBridge.listTemplates(),templates=library.custom.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  if(!templates.length){Services.prompt.alert(window,'Custom templates','Save an instruction canvas with Save template first. Custom templates are separate from the six format defaults.');return;}
+  if(!templates.length){Services.prompt.alert(window,'Custom templates','Save an instruction canvas with Save template first. Custom templates are separate from the format defaults.');return;}
   const selected={value:0};if(!Services.prompt.select(window,'Use custom template','Choose a custom template:',templates.map(row=>row.name+' — '+CanvasFormats.modes[row.mode]),selected))return;
   const template=templates[selected.value];if(!template)throw Error('The selected custom template is unavailable.');
   const answer={value:''};if(!Services.prompt.prompt(window,'Use custom template','Optional topic, concept or question. Leave blank to follow the template instructions.',answer,null,{}))return;
@@ -604,11 +628,16 @@ async function createSourceCanvas(window,mode,items=window.ZoteroPane.getSelecte
   Services.prompt.alert(window,'Canvas created',result.claims+' grounded cards and '+result.links+' links were created from '+result.passages+' selected passages. '+result.rejected+' unsupported AI entries were excluded; '+result.unread+' source(s) had no readable text. This is a draft based on bounded excerpts, not a complete reading of each PDF.');
 }
 async function ensureCanvas(window){
-  if(!canvasWindow || canvasWindow.closed)window.document.getElementById('research-canvas-menu').doCommand();
-  for(let i=0;i<100 && !canvasWindow?.CanvasApp?.getBoard();i++)await Zotero.Promise.delay(50);
-  if(!canvasWindow?.CanvasApp?.getBoard())throw Error('Canvas did not finish opening. Please try again.');
-  return canvasWindow;
+  if(!canvasWindow||canvasWindow.closed)canvasWindow=window.openDialog('chrome://research-canvas/content/canvas.xhtml','research-canvas','chrome,centerscreen,resizable,width=1250,height=820,dialog=no',canvasBridge);
+  for(let i=0;i<100&&!canvasWindow?.CanvasApp?.getBoard();i++)await Zotero.Promise.delay(50);
+  if(!canvasWindow?.CanvasApp?.getBoard())throw Error('Canvas did not finish opening. Please try again.');return canvasWindow;
 }
+async function ensureDashboard(window){
+  if(!dashboardWindow||dashboardWindow.closed)dashboardWindow=window.openDialog('chrome://research-canvas/content/dashboard.xhtml','zotero-canvas-dashboard','chrome,centerscreen,resizable,width=1320,height=860,dialog=no',canvasBridge);
+  for(let i=0;i<100&&!dashboardWindow?.CanvasDashboard;i++)await Zotero.Promise.delay(50);
+  if(!dashboardWindow?.CanvasDashboard)throw Error('The dashboard did not finish opening. Please try again.');return dashboardWindow;
+}
+
 async function findOnCanvases(window){
   const items=window.ZoteroPane.getSelectedItems();if(items.length!==1)throw Error('Select one item to find its canvases.');
   const item=items[0],source=item.isAnnotation()?await Zotero.Items.getAsync(item.parentID):item;

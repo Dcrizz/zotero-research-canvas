@@ -6,7 +6,7 @@ const sources=[
   {id:'s0',title:'Platform study',author:'Jones',year:'2023',passages:[{id:'p1',origin:'PDF text · p. 6',text:'The recommendation system repeatedly privileges popular material in the observed sample.',link:{libraryID:1,key:'ABCDEFGH'},pageIndex:5}]},
   {id:'s1',title:'Audience study',author:'Smith',year:'2024',passages:[{id:'p1',origin:'Saved note',text:'Participants actively rejected several recommended videos and described their own selection practices.',link:{libraryID:1,key:'QRSTUVWX'}}]}
 ];
-test('six built-in templates have editable instruction cards and distinct native structures',()=>{
+test('built-in templates have editable instruction cards and distinct native structures',()=>{
   for(const mode of T.formats){const board=T.builtIn(M,mode,mode);assert.equal(board.mode,mode);assert.equal(board.templateDraft,true);assert.ok(board.nodes.length>=3);assert.ok(board.nodes.every(n=>n.junction||n.text.length>20&&!n.link));assert.deepEqual(M.validate(board),board);}
   const concept=T.builtIn(M,'conceptmap','Concept');assert.ok(concept.edges.some(e=>concept.nodes.find(n=>n.id===e.source).title==='Alternative view'&&concept.nodes.find(n=>n.id===e.target).title==='Strength of alternative'));
   const matrix=T.builtIn(M,'matrix','Compare');assert.ok(matrix.nodes.every(n=>n.organization.matrixColumn==='{{source}}'));
@@ -122,4 +122,11 @@ test('blank chains contain editable numbered placeholders and conditional guards
   assert.throws(()=>T.blankChain(M,'unknown'));
   assert.equal(T.condition({text:'## **Only if:** the sources explicitly discuss an alternative'}),'the sources explicitly discuss an alternative');
   assert.equal(T.stepNumber({title:'',text:'## **2. Finding**'}),2);
+});
+
+test('filled templates retain source-free instructions for reruns and reject nested or source-bearing blueprints',()=>{
+ const b=T.builtIn(M,'matrix','Original'),entries=T.tasks(b,sources).map(task=>({task:task.id,source:task.source,passage:'p1',quote:sources.find(s=>s.id===task.source).passages[0].text,text:'Grounded result'}));
+ const filled=T.fill(M,b,T.verify(JSON.stringify({entries}),b,sources));assert.deepEqual(filled.templateBlueprint,b);assert.equal(filled.templateDraft,false);filled.mode='canvas';assert.deepEqual(M.validate(filled),filled);
+ const nested=M.clone(filled);nested.templateBlueprint.templateBlueprint=b;assert.throws(()=>M.validate(nested),/saved template instructions/);
+ const linked=M.clone(filled);linked.templateBlueprint.nodes[0].link={libraryID:1,key:'ABCDEFGH'};assert.throws(()=>M.validate(linked),/source-free/);
 });
