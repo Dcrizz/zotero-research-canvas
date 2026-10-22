@@ -27,6 +27,11 @@ test('edited instruction graphs save as independent per-format templates',()=>{
   assert.throws(()=>T.tasks(board,sources),/linked source cards/);
   assert.throws(()=>T.validateLibrary(M,{version:1,custom:[],defaults:{conceptmap:template.id}}),/unavailable/);
 });
+test('editing a saved template retains its ID without carrying edit state into new canvases',()=>{
+  const board=T.builtIn(M,'conceptmap','Editable');board.templateSourceID='saved-template';board.templateSourceName='My template';
+  const template=T.capture(M,board,'Updated name',board.templateSourceID);assert.equal(template.id,'saved-template');assert.equal(template.board.templateSourceID,undefined);
+  const next=T.instantiate(M,template,'New canvas');assert.equal(next.templateSourceID,undefined);assert.equal(next.templateDraft,true);
+});
 test('AI filling replaces instructions only when exact excerpts verify and preserves source links',()=>{
   const board=T.builtIn(M,'conceptmap','Concept'),before=M.clone(board),root=board.nodes[0],alternative=board.nodes.find(n=>n.title==='Alternative view');
   root.text='Define the concept, then include an Alternative view when a competing theory is stated.';

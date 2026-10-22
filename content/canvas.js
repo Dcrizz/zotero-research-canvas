@@ -103,7 +103,7 @@ function inspector() {
 }
 function renderMeanings() {
   const container=$('meaning-options');container.replaceChildren();
-  for(const preset of [...M.defaultMeanings(),...customMeanings]){
+  for(const preset of M.meanings(customMeanings)){
     const row=html('div');row.className='meaning-row';const button=html('button');button.type='button';button.textContent=preset.title;button.dataset.meaning=preset.id;button.style.borderLeft='5px solid '+preset.colour;
     button.onclick=()=>{const edge=selected();if(!edge||selection.kind!=='edge')return;checkpoint();for(const key of M.meaningFields)edge[key]=preset[key];changed();render();inspector();};row.append(button);
     if(customMeanings.some(p=>p.id===preset.id)){const remove=html('button');remove.type='button';remove.textContent='×';remove.setAttribute('aria-label','Remove meaning '+preset.title);remove.onclick=act(async()=>{const next=customMeanings.filter(p=>p.id!==preset.id);await bridge.saveMeanings(next);customMeanings=next;renderMeanings();});row.append(remove);}
@@ -714,7 +714,8 @@ function openTemplateDialog(action){
   $('template-dialog-help').textContent=action==='save'?'Edit the cards and their AI instructions first. Begin a conditional card with “Only if: …” to require explicit source support. This saves a reusable, source-free template for this format.':'Select 1–8 regular Zotero sources. Cards headed 1. Definition, 2. Alternative view, and so on run in number order; unnumbered cards run together afterward. Cards beginning “Only if: …” are created only when supported; omitted reasons appear after filling. Each numbered step makes one AI request.';
   $('template-name-row').hidden=action!=='save';$('template-focus-row').hidden=action!=='fill';$('template-default-row').hidden=action!=='save';
   $('template-confirm').textContent=action==='save'?'Save template':'Fill cards';$('template-name').required=action==='save';
-  $('template-name').value='';$('template-focus').value='';$('template-default').checked=false;$('template-dialog-status').textContent='';$('template-dialog-shade').hidden=false;
+  $('template-name').value=action==='save'?(board.templateSourceName||''):'';$('template-focus').value='';$('template-default').checked=false;$('template-dialog-status').textContent='';$('template-dialog-shade').hidden=false;
+  if(action==='save'&&board.templateSourceID)$('template-dialog-help').textContent='Save changes to this template. New canvases created from it will use these instructions.';
   (action==='save'?$('template-name'):$('template-focus')).focus();
 }
 function closeTemplateDialog(){templateGeneration++;$('template-dialog-shade').hidden=true;templateAction=null;}
@@ -730,8 +731,8 @@ async function submitTemplateDialog(){
     finishLabel();await saveInlineNotes();await flush();if(board!==active)throw Error('The canvas changed. Reopen the template action.');const activeRevision=revision;
     if(action==='save'){
       if(!bridge.saveTemplate)throw Error('Template storage is unavailable.');
-      const template=CanvasTemplates.capture(M,board,$('template-name').value);
-      await bridge.saveTemplate(template,$('template-default').checked);closeTemplateDialog();status('Template saved for '+CanvasFormats.modes[board.mode]);
+      const template=CanvasTemplates.capture(M,board,$('template-name').value,board.templateSourceID||crypto.randomUUID());
+      await bridge.saveTemplate(template,$('template-default').checked);board.templateSourceID=template.id;board.templateSourceName=template.name;changed();await flush();closeTemplateDialog();status('Template saved for '+CanvasFormats.modes[board.mode]);
     }else{
       const result=await bridge.fillTemplate(M.clone(board),$('template-focus').value,step=>{
         if(generation!==templateGeneration)throw Error('Template fill dismissed.');
@@ -746,6 +747,10 @@ async function submitTemplateDialog(){
   finally{$('template-confirm').disabled=false;}
 }
 function bind() {
+  $('canvas-home').onclick=act(async()=>{
+    if(!bridge.openDashboard)throw Error('The dashboard is available in the installed Zotero plugin.');
+    finishLabel();await saveInlineNotes(true);await closeNote();await flush();await bridge.openDashboard();
+  });
   $('template-save').onclick=()=>openTemplateDialog('save');$('template-fill').onclick=()=>openTemplateDialog('fill');$('template-cancel').onclick=closeTemplateDialog;
   $('template-omissions').onclick=showTemplateOmissions;$('template-omissions-close').onclick=()=>{$('template-omissions-panel').hidden=true;};
   $('template-dialog-shade').onclick=event=>{if(event.target===$('template-dialog-shade'))closeTemplateDialog();};

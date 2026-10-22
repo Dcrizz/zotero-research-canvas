@@ -1,6 +1,6 @@
 {
   "name": "zotero-canvas",
-  "version": "0.31.0",
+  "version": "0.31.1",
   "private": true,
   "scripts": {
     "test": "node --test test/*.test.cjs",
@@ -17,7 +17,8 @@
     "test:objects": "node test/objects-ui.cjs",
     "test:viewport": "node test/viewport-stability-ui.cjs",
     "test:dashboard": "node test/dashboard-ui.cjs",
-    "test:templates": "node test/template-ui.cjs"
+    "test:templates": "node test/template-ui.cjs",
+    "test:preferences": "node test/preferences-ui.cjs"
   },
   "devDependencies": {
     "playwright": "^1.56.1"

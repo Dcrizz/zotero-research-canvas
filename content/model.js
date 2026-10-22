@@ -51,6 +51,7 @@
     if(b.appearance!==undefined&&(!b.appearance||!colour(b.appearance.background)||!colour(b.appearance.gridColour)||!finite(b.appearance.gridSize,8,100)||typeof b.appearance.showGrid!=='boolean'))throw Error('Invalid canvas appearance.');
     if(b.mindmapDirection!==undefined&&!['horizontal','vertical'].includes(b.mindmapDirection))throw Error('Invalid mind map direction.');
     if(b.templateDraft!==undefined&&typeof b.templateDraft!=='boolean')throw Error('Invalid template state.');
+    if(b.templateSourceID!==undefined&&(!b.templateDraft||typeof b.templateSourceID!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(b.templateSourceID)||typeof b.templateSourceName!=='string'||!b.templateSourceName.trim()||b.templateSourceName.length>100))throw Error('Invalid template editing source.');
     if(b.templateOmissions!==undefined&&(!Array.isArray(b.templateOmissions)||b.templateOmissions.length>32||b.templateOmissions.some(row=>!row||typeof row.title!=='string'||row.title.length>500||typeof row.condition!=='string'||row.condition.length>300||typeof row.reason!=='string'||row.reason.length>500||typeof row.source!=='string'||row.source.length>100)))throw Error('Invalid template omission report.');
     if (b.filters !== undefined && (!b.filters || ['tag','author','year','itemType','colourFamily'].some(k => typeof b.filters[k] !== 'string') || !['dim','hide'].includes(b.filters.mode))) throw Error('Invalid filters.');
     const ids = new Set();
@@ -261,7 +262,8 @@
   function defaultMeanings() {
     return [['supports','Supporting link','SL ✅','#287b63','solid'],['contradicts','Critical link','❌CL','#b34747','dashed'],['extends','Extends','Extends','#4679a3','solid'],['example','Example of','Example of','#967536','dotted']].map(([id,title,label,colour,pattern])=>meaning(id,title,{label,colour,pattern,style:'curved',thickness:3,arrow:'end',hierarchy:false}));
   }
-  const api = {setDefaults, clone, board, node, edge, junction, splitEdge, endpoint, extraRects, formatGuides, layoutKey, child, validate, layout, positions, path, anchor, edgeGeometry, edgePath, droppedIDs, labelPalette, resize, bounds, meaning, meaningFields, defaultMeanings, annotationLabel, referenceTitle};
+  function meanings(custom=[]){const values=new Map(defaultMeanings().map(type=>[type.id,type]));for(const type of custom)values.set(type.id,meaning(type.id,type.title,type));return [...values.values()];}
+  const api = {setDefaults, clone, board, node, edge, junction, splitEdge, endpoint, extraRects, formatGuides, layoutKey, child, validate, layout, positions, path, anchor, edgeGeometry, edgePath, droppedIDs, labelPalette, resize, bounds, meaning, meaningFields, defaultMeanings, meanings, annotationLabel, referenceTitle};
   if (typeof module !== 'undefined') module.exports = api;
   else root.CanvasModel = api;
 })(globalThis);

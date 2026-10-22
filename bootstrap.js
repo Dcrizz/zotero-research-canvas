@@ -132,6 +132,17 @@ async function startup({rootURI}) {
   canvasBridge = {
     nativeNotes: true,
     directory,
+    openDashboard(){
+      const menu=Zotero.getMainWindow().document.getElementById('research-canvas-dashboard-menu');
+      if(!menu)throw Error('The Zotero Canvas dashboard is unavailable.');
+      menu.doCommand();
+    },
+    async openTemplateManager(){
+      this.openDashboard();
+      for(let i=0;i<100&&!dashboardWindow?.CanvasDashboard?.openTemplates;i++)await Zotero.Promise.delay(50);
+      if(!dashboardWindow?.CanvasDashboard?.openTemplates)throw Error('The dashboard did not finish opening. Please try again.');
+      await dashboardWindow.CanvasDashboard.openTemplates();dashboardWindow.focus();
+    },
     async auditEvidence(nodes){
       if(!Array.isArray(nodes)||nodes.length>500||nodes.some(n=>!n||typeof n.id!=='string'||!n.link))throw Error('Choose up to 500 linked cards for an evidence check.');
       const itemCache=new Map(),pageCache=new Map(),results=[];
@@ -460,6 +471,14 @@ async function startup({rootURI}) {
     return {board:CanvasTemplates.fill(CanvasModel,board,checked),filled:checked.entries.length,rejected:checked.rejected,unread:items.length-available.length};
   };
   canvasBridge.dashboardOpenBoard=async id=>{const window=Zotero.getMainWindow(),win=await ensureCanvas(window);await win.CanvasApp.openBoard(id);win.focus();};
+  canvasBridge.dashboardEditTemplate=async(mode,id)=>{
+    if(!CanvasTemplates.formats.includes(mode))throw Error('Choose a structured template format.');
+    const library=await canvasBridge.listTemplates(),custom=library.custom.find(row=>row.id===id&&row.mode===mode);
+    if(id!=='builtin'&&!custom)throw Error('The selected template is unavailable.');
+    const board=custom?CanvasTemplates.instantiate(CanvasModel,custom,custom.name):CanvasTemplates.builtIn(CanvasModel,mode,'Custom '+CanvasFormats.modes[mode]);
+    if(custom){board.templateSourceID=custom.id;board.templateSourceName=custom.name;}
+    await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id);return board.id;
+  };
   canvasBridge.dashboardCreateBoard=async(title,mode,folderID=null,templateID=null)=>{
     if(!Object.hasOwn(CanvasFormats.modes,mode)||typeof title!=='string'||!title.trim()||title.length>200)throw Error('Invalid canvas details.');
     if(folderID!==null&&!(await canvasBridge.libraryState()).folders.some(f=>f.id===folderID))throw Error('Folder unavailable.');
@@ -477,7 +496,7 @@ async function startup({rootURI}) {
     return canvasBridge.organise({op:'createFolder',id:Services.uuid.generateUUID().toString().slice(1,-1),name:name.trim(),folderID:parentID});
   };
   CanvasModel.setDefaults(await canvasBridge.getSettings());
-  Zotero.ResearchCanvasPreferences={defaults:()=>CanvasSettings.defaults(),get:()=>canvasBridge.getSettings(),save:value=>canvasBridge.saveSettings(value),choose:window=>canvasBridge.chooseObsidianDirectory(window),hasAIKey:()=>!!readAIKey(),saveAIKey:value=>writeAIKey(value),listLinkTypes:()=>canvasBridge.listMeanings(),saveLinkTypes:values=>canvasBridge.saveMeanings(values),defaultLinkTypes:()=>CanvasModel.defaultMeanings(),linkType:(id,title,edge)=>CanvasModel.meaning(id,title,edge)};
+  Zotero.ResearchCanvasPreferences={openTemplates:()=>canvasBridge.openTemplateManager(),defaults:()=>CanvasSettings.defaults(),get:()=>canvasBridge.getSettings(),save:value=>canvasBridge.saveSettings(value),choose:window=>canvasBridge.chooseObsidianDirectory(window),hasAIKey:()=>!!readAIKey(),saveAIKey:value=>writeAIKey(value),listLinkTypes:()=>canvasBridge.listMeanings(),saveLinkTypes:values=>canvasBridge.saveMeanings(values),defaultLinkTypes:()=>CanvasModel.defaultMeanings(),linkType:(id,title,edge)=>CanvasModel.meaning(id,title,edge)};
   await Zotero.PreferencePanes.register({id:'research-canvas-settings',pluginID:'research-canvas@local',src:rootURI+'content/preferences.xhtml',scripts:[rootURI+'content/choices.js',rootURI+'content/preferences.js'],stylesheets:[rootURI+'content/choices.css',rootURI+'content/preferences.css'],label:'Zotero Canvas',image:rootURI+'content/icon.png'});
 
   annotationMenuHandler = event => event.append({label: 'Send to Canvas...', onCommand: () => sendToCanvas(Zotero.getMainWindow(), async () => {

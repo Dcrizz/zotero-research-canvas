@@ -76,7 +76,7 @@
   function capture(M,board,name,id=globalThis.crypto.randomUUID()){
     if(!board.templateDraft||!formats.includes(board.mode)||typeof name!=='string'||!name.trim()||name.length>100)throw Error('Open an editable structured template canvas and give the template a name.');
     const clean=M.validate(board);if(clean.nodes.some(n=>n.link||n.kind||n.objectType)||clean.nodes.length>40||clean.edges.length>80)throw Error('Templates can only contain editable instruction cards; remove linked Zotero cards and file objects first.');
-    clean.title=name.trim();clean.view={x:60,y:60,zoom:1};return {id,name:name.trim(),mode:clean.mode,board:clean};
+    delete clean.templateSourceID;delete clean.templateSourceName;clean.title=name.trim();clean.view={x:60,y:60,zoom:1};return {id,name:name.trim(),mode:clean.mode,board:clean};
   }
   function instantiate(M,template,title){
     const source=M.validate(template.board),board=M.board(title),ids=new Map();board.mode=source.mode;board.templateDraft=true;
@@ -163,6 +163,7 @@
     }
     if(result.frames)result.frames=result.frames.map(frame=>({...frame,members:frame.members.flatMap(id=>[...(mapping.get(id)?.values()||[])])})).filter(frame=>frame.members.length);
     result.templateDraft=false;
+    delete result.templateSourceID;delete result.templateSourceName;
     if(checked.omissions?.length)result.templateOmissions=checked.omissions.map(({task,reason})=>({title:task.node.title,condition:condition(task.node),reason,source:task.source||''}));
     return M.validate(result);
   }

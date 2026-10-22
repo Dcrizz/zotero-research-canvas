@@ -6,6 +6,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   const svgNS='http://www.w3.org/2000/svg';
   const svg=(tag,attributes={})=>{const element=document.createElementNS(svgNS,tag);for(const [key,value] of Object.entries(attributes))element.setAttribute(key,String(value));return element;};
   let rows=[],library,folderID=null,layout='grid',dialogKind=null,request=0,templateLibrary=CanvasTemplates.empty(),deletePending=false;
+  let managerLibrary=CanvasTemplates.empty();
   const fail=error=>{console.error(error);$('status').textContent=error.message||String(error);$('status').classList.add('error');};
   const act=fn=>()=>Promise.resolve().then(fn).catch(fail);
   function preview(board){
@@ -68,7 +69,30 @@ window.addEventListener('DOMContentLoaded',()=>{
     const [next,index]=await Promise.all([bridge.list(),bridge.libraryState()]);rows=next;library=index;
     if(folderID&&!library.folders.some(f=>f.id===folderID))folderID=null;
     $('library-count').textContent=rows.length+' canvas'+(rows.length===1?'':'es')+' · '+library.folders.length+' folder'+(library.folders.length===1?'':'s');render();
+    if(!$('templates-shade').hidden)await refreshTemplateManager();
   }
+  function renderTemplateManagerChoices(selected){
+    const mode=$('manage-format').value,list=$('manage-template');list.replaceChildren();
+    for(const row of [{id:'builtin',name:'Built-in '+CanvasFormats.modes[mode]},...managerLibrary.custom.filter(t=>t.mode===mode)]){const option=document.createElement('option');option.value=row.id;option.textContent=row.name;list.append(option);}
+    list.value=[...list.options].some(o=>o.value===selected)?selected:managerLibrary.defaults[mode]||'builtin';renderTemplateManager();
+  }
+  function renderTemplateManager(){
+    const mode=$('manage-format').value,id=$('manage-template').value,custom=managerLibrary.custom.find(row=>row.id===id&&row.mode===mode);
+    const board=custom?custom.board:CanvasTemplates.builtIn(M,mode,'Built-in '+CanvasFormats.modes[mode]);
+    $('manage-template-preview').replaceChildren(preview(board));const cards=$('manage-template-cards');cards.replaceChildren();
+    for(const node of board.nodes.filter(n=>!n.junction)){const item=document.createElement('details'),title=document.createElement('summary'),text=document.createElement('p');title.textContent=node.title;text.textContent=node.text;item.append(title,text);cards.append(item);}
+    const isDefault=(managerLibrary.defaults[mode]||'builtin')===id;$('manage-template-default').disabled=isDefault;$('manage-template-default').textContent=isDefault?'Current default':'Use by default';
+    $('manage-template-status').textContent=custom?'Saved template · '+CanvasFormats.modes[mode]:'Built-in template · edit to create your own copy';
+  }
+  async function refreshTemplateManager(){if(!bridge.listTemplates)throw Error('Template storage is unavailable.');const selected=$('manage-template').value;managerLibrary=await bridge.listTemplates();renderTemplateManagerChoices(selected);}
+  for(const mode of CanvasTemplates.formats){const option=document.createElement('option');option.value=mode;option.textContent=CanvasFormats.modes[mode];$('manage-format').append(option);}
+  async function openTemplates(){await refreshTemplateManager();$('templates-shade').hidden=false;$('manage-format').focus();}
+  $('manage-templates').onclick=act(openTemplates);
+  $('manage-format').onchange=()=>renderTemplateManagerChoices();$('manage-template').onchange=renderTemplateManager;
+  $('close-templates').onclick=()=>{$('templates-shade').hidden=true;$('manage-templates').focus();};
+  $('templates-shade').onclick=event=>{if(event.target===$('templates-shade'))$('close-templates').click();};
+  $('manage-template-default').onclick=act(async()=>{if(!bridge.updateTemplateDefault)throw Error('Template defaults are unavailable.');await bridge.updateTemplateDefault($('manage-format').value,$('manage-template').value);await refreshTemplateManager();});
+  $('manage-template-edit').onclick=act(async()=>{if(!bridge.dashboardEditTemplate)throw Error('Template editing is available in the installed Zotero plugin.');await bridge.dashboardEditTemplate($('manage-format').value,$('manage-template').value);});
   async function openDialog(kind){
     dialogKind=kind;$('dialog-title').textContent=kind==='folder'?'New folder':'New '+CanvasFormats.modes[kind].toLowerCase();$('new-name').value='';deletePending=false;
     const structured=CanvasTemplates.formats.includes(kind);$('template-choice').hidden=!structured;
@@ -87,7 +111,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   $('delete-template').onclick=act(async()=>{if(!deletePending){deletePending=true;$('delete-template').textContent='Click again to remove';return;}if(!bridge.deleteTemplate)throw Error('Template storage is unavailable.');await bridge.deleteTemplate($('new-template').value);templateLibrary=await bridge.listTemplates();renderTemplateChoices();});
   $('cancel-dialog').onclick=closeDialog;
   $('dialog-shade').onclick=event=>{if(event.target===$('dialog-shade'))closeDialog();};
-  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('dialog-shade').hidden)closeDialog();});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'){if(!$('dialog-shade').hidden)closeDialog();if(!$('templates-shade').hidden)$('close-templates').click();}});
   $('create-dialog').onsubmit=event=>{event.preventDefault();const name=$('new-name').value.trim(),kind=dialogKind;if(!name)return;
     const template=CanvasTemplates.formats.includes(kind)?$('new-template').value:null,makeDefault=template&&$('template-default').checked;
     closeDialog();Promise.resolve().then(async()=>{if(kind==='folder')await bridge.dashboardCreateFolder(name,folderID);else{if(makeDefault&&bridge.updateTemplateDefault)await bridge.updateTemplateDefault(kind,template);await bridge.dashboardCreateBoard(name,kind,folderID,template);}await refresh();}).catch(fail);
@@ -95,5 +119,5 @@ window.addEventListener('DOMContentLoaded',()=>{
   $('all-canvases').onclick=()=>{folderID=null;render();};$('search').oninput=()=>renderCanvases().catch(fail);
   for(const [id,value] of [['grid-view','grid'],['list-view','list']])$(id).onclick=()=>{layout=value;$('grid-view').setAttribute('aria-pressed',String(value==='grid'));$('list-view').setAttribute('aria-pressed',String(value==='list'));renderCanvases().catch(fail);};
   $('open-editor').onclick=act(async()=>{const first=rows.sort((a,b)=>(Number(b.modified)||0)-(Number(a.modified)||0))[0];if(first)await bridge.dashboardOpenBoard(first.id);else openDialog('canvas');});
-  window.addEventListener('focus',()=>refresh().catch(fail));window.CanvasDashboard={refresh};refresh().catch(fail);
+  window.addEventListener('focus',()=>refresh().catch(fail));window.CanvasDashboard={refresh,openTemplates};refresh().catch(fail);
 });

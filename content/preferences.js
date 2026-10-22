@@ -10,15 +10,19 @@ var ResearchCanvasPreferences={
     const html=tag=>doc.createElementNS('http://www.w3.org/1999/xhtml',tag);
     const syncAPI=()=>{const own=$('api-provider').value==='openai-compatible';for(const id of ['api-endpoint','api-model','api-key','save-api-key','clear-api-key'])$(id).disabled=!own;};
     function resetLinkEditor(){editingID=null;$('link-name').value='';$('link-label').value='';$('link-colour').value='#277c6b';$('link-thickness').value='3';$('link-pattern').value='solid';$('link-style').value='curved';$('link-arrow').value='end';linkChoices.forEach(choice=>choice.sync());$('link-save').textContent='Add link type';$('link-cancel').hidden=true;}
+    function effectiveLinkTypes(){const values=new Map(service.defaultLinkTypes().map(type=>[type.id,type]));for(const type of linkTypes)values.set(type.id,type);return [...values.values()];}
     function renderLinkTypes(){
       const list=$('link-types');list.replaceChildren();
-      for(const type of [...service.defaultLinkTypes(),...linkTypes]){
+      for(const type of effectiveLinkTypes()){
         const row=html('div');row.className='research-canvas-link-row';const swatch=html('span');swatch.className='research-canvas-link-swatch';swatch.style.backgroundColor=type.colour;
         const summary=html('span');summary.textContent=type.title+' · '+type.label+' · '+type.pattern+' · '+type.thickness+' px';row.append(swatch,summary);
-        if(linkTypes.some(item=>item.id===type.id)){
+        const builtIn=service.defaultLinkTypes().some(item=>item.id===type.id),overridden=linkTypes.some(item=>item.id===type.id);
+        {
           const edit=html('button');edit.type='button';edit.textContent='Edit';edit.setAttribute('aria-label','Edit '+type.title);edit.onclick=()=>{editingID=type.id;$('link-name').value=type.title;$('link-label').value=type.label;$('link-colour').value=type.colour;$('link-thickness').value=String(type.thickness);$('link-pattern').value=type.pattern;$('link-style').value=type.style;$('link-arrow').value=type.arrow;linkChoices.forEach(choice=>choice.sync());$('link-save').textContent='Save link type';$('link-cancel').hidden=false;$('link-name').focus();};
-          const remove=html('button');remove.type='button';remove.textContent='Delete';remove.setAttribute('aria-label','Delete '+type.title);remove.onclick=guard(async()=>{const next=linkTypes.filter(item=>item.id!==type.id);await service.saveLinkTypes(next);linkTypes=next;if(editingID===type.id)resetLinkEditor();renderLinkTypes();show('Link type deleted. Existing connectors keep their appearance.');});row.append(edit,remove);
-        }else{const builtIn=html('small');builtIn.textContent='Built in';row.append(builtIn);}
+          row.append(edit);
+          if(!builtIn||overridden){const remove=html('button');remove.type='button';remove.textContent=builtIn?'Reset':'Delete';remove.setAttribute('aria-label',(builtIn?'Reset ':'Delete ')+type.title);remove.onclick=guard(async()=>{const next=linkTypes.filter(item=>item.id!==type.id);await service.saveLinkTypes(next);linkTypes=next;if(editingID===type.id)resetLinkEditor();renderLinkTypes();show(builtIn?'Built-in link type restored.':'Link type deleted. Existing connectors keep their appearance.');});row.append(remove);}
+          if(builtIn){const hint=html('small');hint.textContent=overridden?'Customised built-in':'Built in';row.append(hint);}
+        }
         list.append(row);
       }
     }
@@ -29,6 +33,7 @@ var ResearchCanvasPreferences={
       for(const [key,value] of Object.entries(settings.canvas)){const field=$('canvas-'+key);if(typeof value==='boolean')field.checked=value;else field.value=value;}
     }
     $('browse').onclick=guard(async()=>{const path=await service.choose(doc.defaultView);if(path)$('export-path').value=path;});
+    $('manage-templates').onclick=guard(()=>service.openTemplates());
     $('api-provider').addEventListener('change',syncAPI);
     const updateKeyStatus=()=>{$('api-key-status').textContent=service.hasAIKey()?'API key saved locally':'No API key saved';};
     $('save-api-key').onclick=guard(async()=>{if(!$('api-key').value.trim())throw Error('Enter an API key first.');await service.saveAIKey($('api-key').value.trim());$('api-key').value='';updateKeyStatus();show('AI API key saved in Zotero’s password manager.');});
@@ -45,10 +50,10 @@ var ResearchCanvasPreferences={
     $('link-save').onclick=guard(async()=>{
       const name=$('link-name').value.trim(),label=$('link-label').value.trim(),thickness=Number($('link-thickness').value);
       if(!name||!label||label.length>120||!$('link-thickness').checkValidity())throw Error('Enter a link type name, label and thickness from 1 to 12.');
-      if([...service.defaultLinkTypes(),...linkTypes].some(type=>type.title.toLocaleLowerCase()===name.toLocaleLowerCase()&&type.id!==editingID))throw Error('A link type with that name already exists.');
-      const id=editingID||doc.defaultView.crypto.randomUUID(),previous=linkTypes.find(type=>type.id===id);
+      if(effectiveLinkTypes().some(type=>type.title.toLocaleLowerCase()===name.toLocaleLowerCase()&&type.id!==editingID))throw Error('A link type with that name already exists.');
+      const id=editingID||doc.defaultView.crypto.randomUUID(),previous=effectiveLinkTypes().find(type=>type.id===id);
       const type=service.linkType(id,name,{...previous,label,colour:$('link-colour').value,thickness,pattern:$('link-pattern').value,style:$('link-style').value,arrow:$('link-arrow').value,hierarchy:previous?.hierarchy??false});
-      const next=editingID?linkTypes.map(item=>item.id===id?type:item):[...linkTypes,type];await service.saveLinkTypes(next);linkTypes=next;resetLinkEditor();renderLinkTypes();show('Link type saved. It is ready in the connector menu.');
+      const next=[...linkTypes.filter(item=>item.id!==id),type];await service.saveLinkTypes(next);linkTypes=next;resetLinkEditor();renderLinkTypes();show('Link type saved. It is ready in the connector menu.');
     });
     try{[settings,linkTypes]=await Promise.all([service.get(),service.listLinkTypes()]);fill();renderLinkTypes();updateKeyStatus();}catch(error){Zotero.logError(error);show(error.message,true);}
   }
