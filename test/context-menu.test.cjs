@@ -35,3 +35,13 @@ test('custom-template command preserves selected sources and optional focus with
   f.context.canvasBridge={listTemplates:async()=>({custom:[template]}),fillTemplate:async(draft,focus,progress,selected)=>{assert.equal(focus,'platform governance');assert.equal(selected,items);assert.equal(draft.mode,'canvas');assert.notEqual(draft.id,board.id);return {board:draft,filled:1,rejected:0,unread:0};},save:async b=>calls.push(b.id),dashboardOpenBoard:async id=>assert.equal(id,calls[0])};
   await f.context.createCustomTemplateCanvas({},items);assert.equal(JSON.stringify(template),snapshot);assert.equal(calls.length,2);assert.equal(calls[1],'closed');
 });
+test('Send to Canvas offers active canvases and never sends Zotero items into template drafts',async()=>{
+  const f=fixture(),selected=[{id:17,deleted:false}],calls=[];
+  f.context.Services={prompt:{select(win,title,message,labels,choice){calls.push([...labels]);choice.value=0;return true;}}};
+  f.context.canvasBridge={list:async()=>[{id:'draft',title:'Comparison matrix template',templateDraft:true},{id:'canvas',title:'Test Canvas',templateDraft:false}],load:async id=>({templateDraft:id==='draft'}),fromDrop:async()=>[{title:'Annotation'}]};
+  f.context.ensureCanvas=async()=>{};f.context.canvasWindow={CanvasApp:{receiveItems:async(id,items)=>calls.push({id,items})},focus(){}};
+  await f.context.sendToCanvas({},async()=>selected);
+  assert.deepEqual(calls[0],['Test Canvas']);assert.equal(calls[1].id,'canvas');assert.equal(calls[1].items[0].title,'Annotation');
+  f.context.canvasBridge.list=async()=>[{id:'draft',title:'Comparison matrix template',templateDraft:true}];
+  await assert.rejects(()=>f.context.sendToCanvas({},async()=>selected),/Templates are edited in Templates/);
+});

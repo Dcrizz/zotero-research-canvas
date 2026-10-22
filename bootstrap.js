@@ -421,6 +421,23 @@ async function startup({rootURI}) {
       if(!Array.isArray(ids)||!ids.length||ids.length>8||ids.some(id=>!Number.isSafeInteger(id)||id<1))throw Error('Select 1–8 Zotero sources.');
       const items=await Zotero.Items.getAsync([...new Set(ids)]);if(items.some(i=>!i||i.deleted||!i.isRegularItem()))throw Error('A selected source is no longer available.');return Promise.all(items.map(describe));
     },
+    async sourceSelection(board){
+      CanvasModel.validate(board);
+      let ids=board.sourceItemIDs;
+      if(!ids&&board.templateBlueprint){
+        const found=new Set();
+        for(const node of board.nodes){
+          if(!node.link)continue;
+          const linked=await Zotero.Items.getByLibraryAndKeyAsync(node.link.libraryID,node.link.key);
+          const source=linked?.isRegularItem()?linked:linked?.parentItemID?await Zotero.Items.getAsync(linked.parentItemID):null;
+          if(source?.isRegularItem()&&!source.deleted)found.add(source.id);
+        }
+        ids=[...found].slice(0,8);
+      }
+      if(!ids?.length)return [];
+      const items=await Zotero.Items.getAsync(ids);
+      return ids.map((id,index)=>({id,title:items[index]&&!items[index].deleted?items[index].getField('title')||items[index].key:'Unavailable source #'+id}));
+    },
     async fillTemplateFromSources(board,ids,focus='',progress=null){
       if(!Array.isArray(ids)||!ids.length||ids.length>8||ids.some(id=>!Number.isSafeInteger(id)||id<1))throw Error('Select 1–8 Zotero sources.');
       const items=await Zotero.Items.getAsync([...new Set(ids)]);if(items.some(i=>!i||i.deleted||!i.isRegularItem()))throw Error('A selected source is no longer available.');return this.fillTemplate(board,focus,progress,items);
@@ -527,6 +544,7 @@ async function startup({rootURI}) {
     return {board:CanvasTemplates.fill(CanvasModel,board,checked),filled:checked.entries.length,rejected:checked.rejected,unread:items.length-available.length};
   };
   canvasBridge.dashboardOpenBoard=async(id,reload=false)=>showRoute({kind:'canvas',id,reload});
+  canvasBridge.dashboardOpenSourcePicker=async id=>{if(!canvasWindow||canvasWindow.closed||canvasWindow.CanvasApp?.getBoard()?.id!==id)throw Error('Open the new canvas before choosing sources.');await canvasWindow.CanvasApp.openSourcePicker();};
   canvasBridge.dashboardCreateTemplate=async()=>{await canvasWindow?.CanvasApp?.flush();const library=await canvasBridge.listTemplates(),conditional=library.custom.find(row=>row.name.trim().toLocaleLowerCase()==='conditional branches example');const board=CanvasTemplates.createCustom(CanvasModel,conditional);board.id='template-draft-new';await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id,true);canvasWindow.document.getElementById('fit').click();await canvasWindow.CanvasApp.flush();return board.id;};
   canvasBridge.dashboardEditTemplate=async(mode,id)=>{
     await canvasWindow?.CanvasApp?.flush();
@@ -665,11 +683,12 @@ async function sendToCanvas(window, getItems) {
   const items = (await getItems()).filter(item => item && !item.deleted);
   if (!items.length) throw Error('No available items selected.');
   if (items.length > 200) throw Error('Send up to 200 items at a time. Select a smaller group in the item list.');
-  const boards = await canvasBridge.list();
-  if (!boards.length) throw Error('Create a board in Zotero Canvas first.');
+  const boards = (await canvasBridge.list()).filter(board => !board.templateDraft);
+  if (!boards.length) throw Error('Create a canvas in Zotero Canvas first. Templates are edited in Templates.');
   const chosen = {value: 0};
   if (!Services.prompt.select(window, 'Send to Canvas', 'Choose a canvas for ' + items.length + ' item(s):', boards.map(b => b.title), chosen)) return;
   const target = boards[chosen.value];
+  if((await canvasBridge.load(target.id)).templateDraft)throw Error('This canvas is now an instruction template. Choose an active canvas instead.');
   const descriptions = await canvasBridge.fromDrop(items.map(i => i.id).join(','));
   await ensureCanvas(window);
   await canvasWindow.CanvasApp.receiveItems(target.id, descriptions);

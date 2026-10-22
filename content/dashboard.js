@@ -7,6 +7,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   const svg=(tag,attributes={})=>{const element=document.createElementNS(svgNS,tag);for(const [key,value] of Object.entries(attributes))element.setAttribute(key,String(value));return element;};
   let rows=[],library,folderID=null,layout='grid',dialogKind=null,request=0,templateLibrary=CanvasTemplates.empty(),deletePending=false;
   let managerLibrary=CanvasTemplates.empty(),resetDefaultsPending=false,deleteCustomPending=false,restoreOnePending=false;
+  const sourceFirstModes=new Set(['matrix','literature','evidence','conceptmap','affinity','debate']);
   const fail=error=>{console.error(error);$('status').textContent=error.message||String(error);$('status').classList.add('error');};
   const act=fn=>()=>Promise.resolve().then(fn).catch(fail);
   const templatePickers=[];
@@ -124,6 +125,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   async function openDialog(kind){
     dialogKind=kind;$('dialog-title').textContent=kind==='folder'?'New folder':'New '+CanvasFormats.modes[kind].toLowerCase();$('new-name').value='';deletePending=false;
     const structured=CanvasTemplates.formats.includes(kind);$('template-choice').hidden=!structured;
+    $('template-choice-hint').textContent=sourceFirstModes.has(kind)?'After creating this canvas, choose Zotero sources to populate it. You can change them later with Add Sources.':'Cards contain editable AI instructions. Select Zotero sources, then use Fill with AI in the canvas.';
     if(structured){templateLibrary=bridge.listTemplates?await bridge.listTemplates():CanvasTemplates.empty();renderTemplateChoices();}
     $('dialog-shade').hidden=false;$('new-name').focus();
   }
@@ -142,7 +144,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.addEventListener('keydown',event=>{if(event.key==='Escape'){const open=templatePickers.find(p=>!p.choices.group.hidden);if(open){open.close();open.toggle.focus();return;}if(!$('dialog-shade').hidden)closeDialog();if(!$('templates-shade').hidden)$('close-templates').click();}});
   $('create-dialog').onsubmit=event=>{event.preventDefault();const name=$('new-name').value.trim(),kind=dialogKind;if(!name)return;
     const template=CanvasTemplates.formats.includes(kind)?$('new-template').value:null,makeDefault=template&&$('template-default').checked;
-    closeDialog();Promise.resolve().then(async()=>{if(kind==='folder')await bridge.dashboardCreateFolder(name,folderID);else{if(makeDefault&&bridge.updateTemplateDefault)await bridge.updateTemplateDefault(kind,template);await bridge.dashboardCreateBoard(name,kind,folderID,template);}await refresh();}).catch(fail);
+    closeDialog();Promise.resolve().then(async()=>{if(kind==='folder')await bridge.dashboardCreateFolder(name,folderID);else{if(makeDefault&&bridge.updateTemplateDefault)await bridge.updateTemplateDefault(kind,template);const id=await bridge.dashboardCreateBoard(name,kind,folderID,template);if(sourceFirstModes.has(kind))await bridge.dashboardOpenSourcePicker(id);}await refresh();}).catch(fail);
   };
   $('all-canvases').onclick=()=>{folderID=null;render();};$('search').oninput=()=>renderCanvases().catch(fail);
   for(const [id,value] of [['grid-view','grid'],['list-view','list']])$(id).onclick=()=>{layout=value;$('grid-view').setAttribute('aria-pressed',String(value==='grid'));$('list-view').setAttribute('aria-pressed',String(value==='list'));renderCanvases().catch(fail);};
