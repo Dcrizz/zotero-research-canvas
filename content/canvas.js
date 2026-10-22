@@ -334,6 +334,7 @@ function render() {
       toggle.addEventListener('click', () => toggleNoteMenu(n.id)); header.append(heading, toggle); cardHeading = header;
     }
     const body = html('div'); body.className = 'body'; body.textContent = n.text;
+    if(n.topicHeading){const topic=html('h3');topic.className='topic-heading';topic.textContent=n.topicHeading;body.replaceChildren(topic,document.createTextNode(n.text.startsWith(n.topicHeading)?n.text.slice(n.topicHeading.length).trimStart():n.text));}
     if(!n.kind || n.kind==='reference')for(const target of [heading,body])target.ondblclick=ev=>{ev.stopPropagation();openStyles('node',n.id);$('style-toolbar').querySelector('[data-tool=text]').click();$(target===heading?'title':'text').focus();};
     if (n.kind === 'note' && bridge.nativeNotes) {
       if (!preview) {
@@ -382,7 +383,7 @@ function render() {
       const closeMenu = () => { noteMenuID = null; menu.hidden = true; card.classList.remove('actions-open'); card.querySelector('.note-actions-toggle').setAttribute('aria-expanded', 'false'); };
       if(n.kind==='annotation'){
         const expand=html('button');expand.className='linked expand-annotation';expand.textContent=n.height>=500?'Collapse annotation':'Expand annotation';expand.setAttribute('role','menuitem');expand.onclick=()=>{closeMenu();checkpoint();const current=board.nodes.find(x=>x.id===n.id);current.height=current.height>=500?280:600;changed();render();};menu.append(expand);
-        const open=html('button');open.className='linked open-source';open.textContent='Open source';open.setAttribute('role','menuitem');open.onclick=act(()=>{closeMenu();if(!bridge.openSource)throw Error('Open source is available in the installed Zotero plugin.');return bridge.openSource(n.link,n.annotationKey);});menu.append(open);card.append(menu);
+        const open=html('button');open.className='linked open-source';open.textContent='Open source';open.setAttribute('role','menuitem');open.onclick=act(()=>{closeMenu();if(n.annotationKey){if(!bridge.openSource)throw Error('Open source is available in the installed Zotero plugin.');return bridge.openSource(n.link,n.annotationKey);}return bridge.open(n.link,n.pageIndex);});menu.append(open);card.append(menu);
       }else{
       if (bridge.nativeNotes) {
         const edit = html('button'); edit.className = 'linked edit-note'; edit.textContent = preview.dataset.switching === 'true' ? 'Saving...' : preview.dataset.editing === 'true' ? 'Done editing' : preview.dataset.editable === 'false' ? 'Read-only note' : 'Edit note';
@@ -396,7 +397,7 @@ function render() {
       const open = html('button'); open.className = 'linked open-note'; open.textContent = 'Open in Zotero'; open.setAttribute('role', 'menuitem'); open.addEventListener('click', act(() => { closeMenu(); return bridge.open(n.link); })); menu.append(open); card.append(menu);
       }
     }
-    if (n.link && n.kind !== 'note' && n.kind !== 'annotation') { const link = html('button'); link.className = 'linked'; link.textContent = n.annotationKey ? 'Open source' : 'Open in Zotero'; link.addEventListener('click', act(() => { if (!n.annotationKey) return bridge.open(n.link); if (!bridge.openSource) throw Error('Open source is available in the installed Zotero plugin.'); return bridge.openSource(n.link, n.annotationKey); })); card.append(link); }
+    if (n.link && n.kind !== 'note' && n.kind !== 'annotation') { const link = html('button'); link.className = 'linked'; link.textContent = n.annotationKey ? 'Open source' : Number.isInteger(n.pageIndex)?'Open PDF page':'Open in Zotero'; link.addEventListener('click', act(() => { if (!n.annotationKey) return bridge.open(n.link,n.pageIndex); if (!bridge.openSource) throw Error('Open source is available in the installed Zotero plugin.'); return bridge.openSource(n.link, n.annotationKey); })); card.append(link); }
     card.append(...ports, ...handles);
     card.onpointerdown = ev => {
       if(ev.target.closest('.file-preview')){ev.stopPropagation();return;}
@@ -757,7 +758,7 @@ function bind() {
   };
   renderMeanings();
   $('save-meaning').onclick=act(async()=>{const edge=selected();if(!edge||selection.kind!=='edge')return;const preset=M.meaning(crypto.randomUUID(),$('meaning-name').value,edge),next=[...customMeanings.filter(p=>p.title!==preset.title),preset];if(!bridge.saveMeanings)throw Error('Meaning storage is unavailable.');await bridge.saveMeanings(next);customMeanings=next;$('meaning-name').value='';renderMeanings();status('Link type saved');});
-  $('open-link').onclick = act(() => selected().annotationKey ? bridge.openSource(selected().link,selected().annotationKey) : bridge.open(selected().link));
+  $('open-link').onclick = act(() => selected().annotationKey ? bridge.openSource(selected().link,selected().annotationKey) : bridge.open(selected().link,selected().pageIndex));
   $('expand-note').onclick = act(() => expandNote(selected()));
   $('close-note').onclick = act(closeNote);
   $('sync-related').onclick = () => syncRelation(selected());

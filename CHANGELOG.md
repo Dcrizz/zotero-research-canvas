@@ -1,5 +1,7 @@
 # Changes
 
+- 0.29.3: Adds a multi-source Concept Map centred on a named concept, with typed source cards and topic headings. Adds Group and Ungroup to the blank-canvas menu. Uses page-positioned Awesome GPT PDF passages when available so generated cards can jump to verified PDF pages; index-only excerpts still show page unavailable.
+
 - 0.29.2: Adds an optional focus prompt before comparing selected sources. The focus steers the source-grounded analysis and prioritizes relevant indexed-PDF excerpts; leaving it blank retains the general comparison.
 
 - 0.29.1: Gives literature columns and cards more space. New source-comparison cards have provisional types, distinct colours and clearer relationship labels. PDF annotation cards show saved page labels; plain indexed PDF excerpts still indicate when page location is unavailable.

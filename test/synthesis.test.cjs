@@ -38,3 +38,12 @@ test('concept canvases require verified source passages and produce a directiona
   assert.equal(board.mode,'mindmap');assert.equal(board.edges.length,1);assert.equal(board.edges[0].hierarchy,true);assert.deepEqual(M.validate(board),board);
   assert.throws(()=>S.verify(JSON.stringify({...data,claims:data.claims.slice(0,1)}),input,'concept'));
 });
+test('page-aware PDF excerpts retain a verified page and source link',()=>{
+  const documents=[{pageContent:'A definition of the algorithmic feedback loop appears on this page.',metadata:{id:42,position:{pageIndex:5}}},{pageContent:'A competing explanation appears on the next page.',metadata:{id:42,position:{pageIndex:6}}},{pageContent:'Unrelated attachment.',metadata:{id:43,position:{pageIndex:9}}}];
+  assert.deepEqual(S.pdfPassages(documents,42).map(p=>p.pageIndex),[5,6]);
+  const input=[{...sources[0],passages:[{id:'p1',origin:'PDF text · p. 6',text:documents[0].pageContent,link:{libraryID:1,key:'ABCDEFGH'},pageIndex:5}]}];
+  const data={claims:[{id:'c1',source:'s0',passage:'p1',quote:documents[0].pageContent,title:'Feedback loop definition',cardType:'Definition',interpretation:'Source definition.'}],relations:[]};
+  const board=S.build(M,S.verify(JSON.stringify(data),input,'conceptmap'),'conceptmap','Concept Map — Feedback loop','fixture','Feedback loop');
+  assert.equal(board.mode,'conceptmap');assert.equal(board.nodes[0].title,'Feedback loop');assert.equal(board.nodes[1].pageIndex,5);assert.match(board.nodes[1].title,/◈ Definition · Jones \(2023\) - Platform study/);assert.equal(board.nodes[1].topicHeading,'Feedback loop definition');assert.match(board.nodes[1].text,/^Feedback loop definition\n\n/);assert.equal(board.edges[0].label,'Definition');assert.deepEqual(M.validate(board),board);
+  const positions=M.positions(board);assert.ok(positions.get(board.nodes[0].id).x>positions.get(board.nodes[1].id).x);
+});

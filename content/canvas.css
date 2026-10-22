@@ -60,6 +60,8 @@ body{display:flex;flex-direction:column;height:100vh}main{flex:1;min-height:0}
 .annotation-colour-pill{display:block;align-self:flex-start;flex-shrink:0;margin:5px 12px 9px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;border:1px solid #0002}
 
 #frame-controls{position:absolute;left:0;top:0;z-index:5;pointer-events:none}.frame-backdrop{position:absolute;border:2px solid;border-radius:10px;pointer-events:none}
+#canvas-create-toolbar button:disabled{opacity:.35;cursor:not-allowed}#canvas-create-toolbar button:disabled:hover{background:transparent}
+.synthesis-card .topic-heading{font-family:Georgia,serif;font-size:1.12em;line-height:1.25;margin:0 0 10px;color:#263c38}
 
 .tag-badge{position:static;align-self:flex-start;margin:3px 12px 6px;flex-shrink:0}
 

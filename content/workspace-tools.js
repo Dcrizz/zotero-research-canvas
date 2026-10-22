@@ -9,9 +9,9 @@ window.CanvasWorkspace = function (ctx) {
     const b = element('button'); b.type = 'button'; b.textContent = label; b.addEventListener('click', () => Promise.resolve().then(action).catch(report)); parent.append(b); return b;
   };
   function iconButton(b,label,path){b.textContent='';b.classList.add('toolbar-icon');b.title=label;b.dataset.tooltip=label;b.setAttribute('aria-label',label);const ns='http://www.w3.org/2000/svg',icon=document.createElementNS(ns,'svg'),shape=document.createElementNS(ns,'path');icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');shape.setAttribute('d',path);icon.append(shape);b.append(icon);return b;}
-  const creation=element('div');creation.id='canvas-create-toolbar';creation.hidden=true;creation.setAttribute('role','toolbar');creation.setAttribute('aria-label','Create on canvas');document.body.append(creation);let creationPoint=null;
-  for(const [label,kind,path] of [['Add card','card','M4 5h16v14H4z M8 9h8 M8 13h5'],['Add frame','frame','M3 9V3h6 M15 3h6v6 M21 15v6h-6 M9 21H3v-6']]){const b=button('',()=>{const at=creationPoint;creation.hidden=true;if(!at)return;if(kind==='card')ctx.addCard(at.x,at.y);else createFrame(at);},creation);b.title=label;b.setAttribute('aria-label',label);b.dataset.create=kind;const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');const shape=document.createElementNS('http://www.w3.org/2000/svg','path');shape.setAttribute('d',path);shape.setAttribute('fill','none');shape.setAttribute('stroke','currentColor');shape.setAttribute('stroke-width','1.7');shape.setAttribute('stroke-linejoin','round');icon.append(shape);b.append(icon);}
-  viewport.addEventListener('contextmenu',ev=>{if(ev.target.closest('.card,.edge-hit,.edge-label,.endpoint,.route-handle,.frame-heading,button,input,select,textarea'))return;ev.preventDefault();ev.stopPropagation();ctx.hideStyles();select(null,null);closeFrameMenu();creationPoint=point(ev);creation.hidden=false;creation.querySelector('[data-create=frame]').disabled=getBoard().mode!=='canvas';const r=viewport.getBoundingClientRect();creation.style.left=Math.max(r.left+8,Math.min(ev.clientX,r.right-creation.offsetWidth-8))+'px';creation.style.top=Math.max(r.top+8,Math.min(ev.clientY,r.bottom-creation.offsetHeight-8))+'px';creation.firstElementChild.focus({preventScroll:true});});
+  const creation=element('div');creation.id='canvas-create-toolbar';creation.hidden=true;creation.setAttribute('role','toolbar');creation.setAttribute('aria-label','Canvas actions');document.body.append(creation);let creationPoint=null,creationSelection=[];
+  for(const [label,kind,path] of [['Add card','card','M4 5h16v14H4z M8 9h8 M8 13h5'],['Add frame','frame','M3 9V3h6 M15 3h6v6 M21 15v6h-6 M9 21H3v-6'],['Group','group','M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z M10 7h4 M7 10v4 M17 10v4 M10 17h4'],['Ungroup','ungroup','M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z M10 7l4 10 M14 7l-4 10']]){const b=button('',()=>{const at=creationPoint,ids=creationSelection;creation.hidden=true;if(kind==='group')groupCards(ids);else if(kind==='ungroup')ungroupCards(ids);else if(at){if(kind==='card')ctx.addCard(at.x,at.y);else createFrame(at);}},creation);b.title=label;b.setAttribute('aria-label',label);b.dataset.create=kind;const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');const shape=document.createElementNS('http://www.w3.org/2000/svg','path');shape.setAttribute('d',path);shape.setAttribute('fill','none');shape.setAttribute('stroke','currentColor');shape.setAttribute('stroke-width','1.7');shape.setAttribute('stroke-linejoin','round');icon.append(shape);b.append(icon);}
+  viewport.addEventListener('contextmenu',ev=>{if(ev.target.closest('.card,.edge-hit,.edge-label,.endpoint,.route-handle,.frame-heading,button,input,select,textarea'))return;ev.preventDefault();ev.stopPropagation();ctx.hideStyles();creationSelection=multiple.size?[...multiple]:ctx.selected()?.id?[ctx.selected().id]:[];select(null,null);closeFrameMenu();creationPoint=point(ev);creation.hidden=false;creation.querySelector('[data-create=frame]').disabled=getBoard().mode!=='canvas';creation.querySelector('[data-create=group]').disabled=getBoard().mode!=='canvas'||creationSelection.length<2;creation.querySelector('[data-create=ungroup]').disabled=!groupFor(creationSelection);const r=viewport.getBoundingClientRect();creation.style.left=Math.max(r.left+8,Math.min(ev.clientX,r.right-creation.offsetWidth-8))+'px';creation.style.top=Math.max(r.top+8,Math.min(ev.clientY,r.bottom-creation.offsetHeight-8))+'px';creation.firstElementChild.focus({preventScroll:true});});
   document.addEventListener('pointerdown',ev=>{if(!creation.contains(ev.target))creation.hidden=true;});viewport.addEventListener('wheel',()=>{creation.hidden=true;},{passive:true});document.addEventListener('keydown',ev=>{if(ev.key==='Escape')creation.hidden=true;});
   const framesLayer = element('div'); framesLayer.id = 'frames'; document.getElementById('world').prepend(framesLayer);
   const frameControls=element('div');frameControls.id='frame-controls';document.getElementById('world').append(frameControls);
@@ -49,7 +49,7 @@ window.CanvasWorkspace = function (ctx) {
       const b = button(icon, () => openOption(kind), menu); b.title = label; b.setAttribute('aria-label', label); b.dataset.frameTool = kind;
       if (kind === 'colour' || kind === 'border') b.style.color = currentFrame()[kind];
     }
-    const remove = button('×', () => { checkpoint(); getBoard().frames = getBoard().frames.filter(f => f.id !== frameID); frameID = null; closeFrameMenu(); changed(); redraw(); }, menu); remove.title = 'Remove frame (keep cards)'; remove.setAttribute('aria-label', remove.title);
+    const remove = button('×', () => { checkpoint(); getBoard().frames = getBoard().frames.filter(f => f.id !== frameID); frameID = null; closeFrameMenu(); changed(); redraw(); }, menu); remove.title = currentFrame()?.isGroup?'Ungroup (keep cards)':'Remove frame (keep cards)'; remove.setAttribute('aria-label', remove.title);
     menu.hidden = false; popover.hidden = true; redraw();
   }
   function positionFrameMenu() {
@@ -75,7 +75,7 @@ window.CanvasWorkspace = function (ctx) {
   });
   for (const type of ['pointerup', 'pointercancel']) viewport.addEventListener(type, ev => {
     if (!frameDrag) return; const id = frameDrag.pointer; frameDrag = null; if (viewport.hasPointerCapture(id)) viewport.releasePointerCapture(id);
-    const f = currentFrame(); if (f) f.members = contained(f).map(n => n.id); changed(); redraw();
+    const f = currentFrame(); if (f&&!f.isGroup) f.members = contained(f).map(n => n.id); changed(); redraw();
   });
   document.addEventListener('pointerdown', ev => { if (!ev.target.closest('#frame-toolbar,#frame-options,.canvas-frame')) closeFrameMenu(); }, true);
   const filterPanel = element('section'); filterPanel.id = 'filter-panel'; filterPanel.hidden = true; filterPanel.setAttribute('aria-label', 'Canvas filters'); shelf.after(filterPanel);
@@ -123,6 +123,9 @@ window.CanvasWorkspace = function (ctx) {
   function updateSelectionMode(){selectButton.setAttribute('aria-pressed',String(selecting));viewport.classList.toggle('selection-mode',selecting);selectionHint.hidden=!selecting;}
   const marquee = element('div'); marquee.id = 'selection-marquee'; marquee.hidden = true; document.body.append(marquee);
   const multiNodes = () => getBoard().nodes.filter(n=>multiple.has(n.id));
+  function groupFor(ids){return ids.length?(getBoard().frames||[]).findLast(f=>f.isGroup&&ids.every(id=>f.members.includes(id))):null;}
+  function groupCards(ids){const nodes=getBoard().nodes.filter(n=>ids.includes(n.id));if(getBoard().mode!=='canvas'||nodes.length<2)throw Error('Select at least two cards on a freeform canvas to group.');checkpoint();const rect=M.bounds(nodes,45);const f={id:crypto.randomUUID(),title:'Group',...rect,width:Math.max(200,rect.width),height:Math.max(200,rect.height),colour:'#dcebe6',border:'#69877d',members:nodes.map(n=>n.id),isGroup:true};(getBoard().frames||=[]).push(f);multiple.clear();changed();openFrameMenu(f.id);}
+  function ungroupCards(ids){const f=groupFor(ids);if(!f)throw Error('Select a grouped card to ungroup.');checkpoint();getBoard().frames=getBoard().frames.filter(frame=>frame.id!==f.id);frameID=null;multiple.clear();changed();redraw();}
   function mutateMultiple(action, requiresCanvas = true) {
     if (requiresCanvas && getBoard().mode !== 'canvas') throw Error('Switch to freeform canvas for alignment and resizing.');
     checkpoint(); action(multiNodes()); changed(); redraw();
@@ -149,6 +152,12 @@ window.CanvasWorkspace = function (ctx) {
       multiDrag={pointer:ev.pointerId,start:point(ev),nodes:M.clone(multiNodes()),rect:M.bounds(multiNodes(),0),resize:direction};
       viewport.setPointerCapture(ev.pointerId);return true;
     }
+    const group=getBoard().mode==='canvas'&&groupFor([node.id]);
+    if(group&&ev.target.closest('.heading')){
+      ev.preventDefault();ev.stopPropagation();checkpoint();const nodes=getBoard().nodes.filter(item=>group.members.includes(item.id));
+      multiDrag={pointer:ev.pointerId,start:point(ev),nodes:M.clone(nodes),rect:M.bounds(nodes,0),groupFrame:{id:group.id,x:group.x,y:group.y}};
+      viewport.setPointerCapture(ev.pointerId);return true;
+    }
     if(multiple.size&&!ev.target.closest('.port')){multiple.clear();redraw();}return false;
   }
   viewport.addEventListener('pointerdown',ev=>{
@@ -159,7 +168,7 @@ window.CanvasWorkspace = function (ctx) {
     if(!multiDrag)return;const d=multiDrag,p=point(ev),dx=p.x-d.start.x,dy=p.y-d.start.y,b=getBoard();
     if(d.box){Object.assign(marquee.style,{left:Math.min(d.screen.x,ev.clientX)+'px',top:Math.min(d.screen.y,ev.clientY)+'px',width:Math.abs(ev.clientX-d.screen.x)+'px',height:Math.abs(ev.clientY-d.screen.y)+'px'});marquee.hidden=false;const ps=M.positions(b),x=Math.min(p.x,d.start.x),y=Math.min(p.y,d.start.y),r=Math.max(p.x,d.start.x),bottom=Math.max(p.y,d.start.y);multiple.clear();for(const n of b.nodes){const pos=ps.get(n.id);if(matches(n)&&pos.x>=x&&pos.y>=y&&pos.x+n.width<=r&&pos.y+n.height<=bottom)multiple.add(n.id);}}
     else if(d.resize){const dir=d.resize,rx=dir.includes('w')?-dx:dir.includes('e')?dx:0,ry=dir.includes('n')?-dy:dir.includes('s')?dy:0;const sx=Math.max(...d.nodes.map(n=>(n.objectType?24:140)/n.width),Math.min(...d.nodes.map(n=>1200/n.width),1+rx/d.rect.width)),sy=Math.max(...d.nodes.map(n=>(n.objectType?24:100)/n.height),Math.min(...d.nodes.map(n=>1200/n.height),1+ry/d.rect.height)),ox=dir.includes('w')?d.rect.x+d.rect.width:d.rect.x,oy=dir.includes('n')?d.rect.y+d.rect.height:d.rect.y;for(const original of d.nodes){const n=b.nodes.find(n=>n.id===original.id);if(n)Object.assign(n,{x:ox+(original.x-ox)*sx,y:oy+(original.y-oy)*sy,width:original.width*sx,height:original.height*sy});}}
-    else for(const original of d.nodes){const n=b.nodes.find(n=>n.id===original.id);if(n){n.x=original.x+dx;n.y=original.y+dy;}}
+    else {for(const original of d.nodes){const n=b.nodes.find(n=>n.id===original.id);if(n){n.x=original.x+dx;n.y=original.y+dy;}}if(d.groupFrame){const f=b.frames?.find(frame=>frame.id===d.groupFrame.id);if(f){f.x=d.groupFrame.x+dx;f.y=d.groupFrame.y+dy;}}}
     redraw();
   });
   for(const type of ['pointerup','pointercancel'])viewport.addEventListener(type,ev=>{if(!multiDrag)return;const d=multiDrag;multiDrag=null;marquee.hidden=true;if(viewport.hasPointerCapture(d.pointer))viewport.releasePointerCapture(d.pointer);if(!d.box)changed();redraw();});
@@ -234,7 +243,7 @@ window.CanvasWorkspace = function (ctx) {
       frame.onpointerdown = ev => {
         if (ev.button !== 0) return; ev.stopPropagation(); frameID = f.id; select(null, null);
         if (board.mode !== 'canvas') { openFrameMenu(f.id); return; }
-        checkpoint(); f.members = contained(f).map(n => n.id); frameDrag = {pointer: ev.pointerId, start: point(ev), x: f.x, y: f.y, width: f.width, height: f.height, nodes: M.clone(contained(f)), resize: ev.target === resize};
+        checkpoint(); if(!f.isGroup)f.members = contained(f).map(n => n.id); frameDrag = {pointer: ev.pointerId, start: point(ev), x: f.x, y: f.y, width: f.width, height: f.height, nodes: M.clone(f.isGroup?board.nodes.filter(n=>f.members.includes(n.id)):contained(f)), resize: ev.target === resize};
         viewport.setPointerCapture(ev.pointerId); ev.preventDefault(); closeFrameMenu(); redraw();
       };
       frameControls.append(frame);

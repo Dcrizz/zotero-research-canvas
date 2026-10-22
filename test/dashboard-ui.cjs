@@ -20,6 +20,7 @@ const {chromium}=require('playwright'),http=require('node:http'),fs=require('nod
     await page.locator('#new-mindmap').click();await page.locator('#new-name').fill('New argument');await page.locator('#confirm-dialog').click();
     await page.getByRole('button',{name:/New argument/}).waitFor();assert.equal((await page.evaluate(()=>testDashboard.boards.at(-1))).mode,'mindmap');
     await page.locator('[data-create-mode=evidence]').click();await page.locator('#new-name').fill('New evidence');await page.locator('#confirm-dialog').click();assert.equal((await page.evaluate(()=>testDashboard.boards.at(-1))).mode,'evidence');
+    await page.locator('[data-create-mode=conceptmap]').click();await page.locator('#new-name').fill('Concept map');await page.locator('#confirm-dialog').click();assert.equal((await page.evaluate(()=>testDashboard.boards.at(-1))).mode,'conceptmap');
     await page.locator('#new-folder').click();await page.locator('#new-name').fill('Subtopic');await page.locator('#confirm-dialog').click();await page.getByRole('button',{name:/Subtopic/}).waitFor();
     await page.locator('#all-canvases').click();await page.locator('#list-view').click();assert.equal(await page.locator('#canvases.list').count(),1);
     await page.locator('#search').fill('reading');assert.equal(await page.locator('.canvas-tile').count(),1);assert.deepEqual(errors,[]);

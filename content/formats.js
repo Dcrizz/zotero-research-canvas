@@ -1,7 +1,7 @@
 (function(root){
   'use strict';
-  const modes={canvas:'Freeform canvas',mindmap:'Mind map',evidence:'Evidence map',matrix:'Comparison matrix',timeline:'Timeline',literature:'Literature map',process:'Process diagram'};
-  const structured=new Set(['evidence','matrix','timeline','literature','process']);
+  const modes={canvas:'Freeform canvas',mindmap:'Mind map',conceptmap:'Concept Map',evidence:'Evidence map',matrix:'Comparison matrix',timeline:'Timeline',literature:'Literature map',process:'Process diagram'};
+  const structured=new Set(['conceptmap','evidence','matrix','timeline','literature','process']);
   const label=value=>String(value||'').trim().slice(0,100);
   function groups(board,kind){
     const first=board.nodes[0]?.id;
@@ -63,7 +63,17 @@
     }
     return {positions,guides};
   }
+  function conceptmap(board){
+    const positions=new Map(),nodes=board.nodes;if(!nodes.length)return {positions,guides:[]};
+    const branches=nodes.slice(1),left=branches.filter((_,index)=>index%2===0),right=branches.filter((_,index)=>index%2===1);
+    const gap=72,columnHeight=column=>column.reduce((sum,node)=>sum+node.height+gap,0)-gap;
+    const height=Math.max(nodes[0].height,gap+Math.max(left.length?columnHeight(left):0,right.length?columnHeight(right):0));
+    const centerX=580,centerY=height/2;positions.set(nodes[0].id,{x:centerX,y:centerY-nodes[0].height/2});
+    for(const [column,x] of [[left,30],[right,centerX+nodes[0].width+270]]){let y=(height-(column.length?columnHeight(column):0))/2;for(const node of column){positions.set(node.id,{x,y});y+=node.height+gap;}}
+    return {positions,guides:[]};
+  }
   function layout(board){
+    if(board.mode==='conceptmap')return conceptmap(board);
     if(board.mode==='matrix')return matrix(board);
     if(board.mode==='process')return process(board);
     if(structured.has(board.mode))return columns(groups(board,board.mode),board.mode);

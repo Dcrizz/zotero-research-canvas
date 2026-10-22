@@ -33,9 +33,11 @@
         || (n.kind === 'canvas' && (!/^[a-zA-Z0-9-]{1,80}$/.test(n.canvasID)||typeof n.embedded!=='boolean'))
         || (n.kind === 'annotation' && (typeof n.annotationHTML !== 'string' || n.annotationHTML.length > 50000000 || !n.link))
         || (n.annotationKey !== undefined && !/^[A-Z0-9]{8}$/.test(n.annotationKey))
+        || (n.pageIndex !== undefined && (!Number.isInteger(n.pageIndex)||n.pageIndex<0||n.pageIndex>100000))
         || (n.sourceUnavailable !== undefined && typeof n.sourceUnavailable !== 'boolean')
         || (n.synthesis !== undefined && typeof n.synthesis !== 'boolean')
-        || (n.synthesisType !== undefined && !['Claim','Finding','Counterargument','Proves','Disproves','Limitation'].includes(n.synthesisType))
+        || (n.synthesisType !== undefined && !['Claim','Finding','Counterargument','Proves','Disproves','Limitation','Definition','Theory','Alternative','Justification','Example'].includes(n.synthesisType))
+        || (n.topicHeading !== undefined && (typeof n.topicHeading!=='string'||n.topicHeading.length>100))
         || (n.pattern !== undefined && !['solid', 'dashed', 'dotted'].includes(n.pattern))
         || (n.fillMode !== undefined && !['filled', 'partial', 'outline'].includes(n.fillMode))
         || (n.kind === 'note' && !n.link)
@@ -61,7 +63,7 @@
       for (const f of b.frames) {
         if (!f || typeof f.id !== 'string' || frameIDs.has(f.id) || typeof f.title !== 'string' || f.title.length > 500 || !colour(f.colour) || !colour(f.border)
           || !finite(f.x, -1e7, 1e7) || !finite(f.y, -1e7, 1e7) || !finite(f.width, 200, 1e7) || !finite(f.height, 200, 1e7)
-          || !Array.isArray(f.members) || f.members.some(id => !ids.has(id))) throw Error('Invalid frame data.');
+          || !Array.isArray(f.members) || f.members.some(id => !ids.has(id)) || f.isGroup!==undefined&&typeof f.isGroup!=='boolean') throw Error('Invalid frame data.');
         frameIDs.add(f.id);
       }
     }

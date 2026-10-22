@@ -89,7 +89,7 @@ async function startup({rootURI}) {
     if(!item?.isRegularItem()||item.deleted)throw Error('Select a saved journal article or other regular Zotero source.');
     await item.loadDataType('childItems');
     const meta=await metadata(item),passages=[],term=concept.toLocaleLowerCase();let serial=0;
-    const add=(text,origin,link,annotationKey)=>{text=CanvasConnections.normalize(text);if(text.length<20)return;const match=term?text.toLocaleLowerCase().indexOf(term):-1;if(term&&match<0)return;const start=match>600?match-300:0;passages.push({id:'p'+(++serial),origin,text:text.slice(start,start+1500),link,annotationKey});};
+    const add=(text,origin,link,annotationKey,pageIndex)=>{text=CanvasConnections.normalize(text);if(text.length<20)return;const match=term?text.toLocaleLowerCase().indexOf(term):-1;if(term&&match<0)return;const start=match>600?match-300:0;passages.push({id:'p'+(++serial),origin,text:text.slice(start,start+1500),link,annotationKey,...(Number.isInteger(pageIndex)?{pageIndex}:{})});};
     for(const id of item.getNotes().slice(0,8)){
       const note=await Zotero.Items.getAsync(id);if(note&&!note.deleted)add(CanvasConnections.plain(note.getNote()),'Saved note',{libraryID:note.libraryID,key:note.key});
       if(passages.length>=5)break;
@@ -103,6 +103,18 @@ async function startup({rootURI}) {
         if(passages.length>=9)break;
       }
       if(attachment.attachmentContentType!=='application/pdf')continue;
+      const gpt=Zotero.getMainWindow().Meet?.Zotero;
+      if(typeof gpt?.pdf2documents==='function'){
+        let documents;
+        try{documents=await gpt.pdf2documents(attachment.id);}catch(error){Zotero.logError(error);}
+        const pages=CanvasSynthesis.pdfPassages(documents,attachment.id,concept||focus);
+        if(pages.length){
+          const reader=Zotero.Reader._readers?.find(value=>value._item?.id===attachment.id),labels=reader?._internalReader?._state?.pageLabels;
+          for(const page of pages){const label=labels?.[page.pageIndex]||String(page.pageIndex+1);add(page.text,'PDF text · p. '+label,{libraryID:attachment.libraryID,key:attachment.key},undefined,page.pageIndex);}
+          if(passages.length>=13)break;
+          continue;
+        }
+      }
       const cache=Zotero.Fulltext.getItemCacheFile(attachment);
       if(!cache||!(await IOUtils.exists(cache.path))||(await IOUtils.stat(cache.path)).size>12000000)continue;
       const full=CanvasConnections.normalize(await IOUtils.readUTF8(cache.path));if(full.length<100)continue;
@@ -147,7 +159,7 @@ async function startup({rootURI}) {
     saveSettings(value){const settings=CanvasSettings.validate(value);const operation=queue.then(async()=>{const dir=PathUtils.join(directory,'settings');await IOUtils.makeDirectory(dir,{ignoreExisting:true});const path=PathUtils.join(dir,'preferences.json');await IOUtils.writeJSON(path,settings,{tmpPath:path+'.tmp',backupFile:path+'.bak'});CanvasModel.setDefaults(settings);canvasWindow?.CanvasApp?.updateDefaults(settings);});queue=operation.catch(error=>Zotero.logError(error));return operation;},
     openSettings(){Zotero.Utilities.Internal.openPreferences('research-canvas-settings');},
     chooseObsidianDirectory(window=canvasWindow){return new Promise(resolve=>{const picker=Cc['@mozilla.org/filepicker;1'].createInstance(Ci.nsIFilePicker);picker.init(window.browsingContext,'Choose an export folder inside your Obsidian vault',Ci.nsIFilePicker.modeGetFolder);picker.open(result=>resolve(result===Ci.nsIFilePicker.returnCancel?null:picker.file.path));});},
-    async sourceLinks(nodes){const result={};for(const n of nodes.filter(n=>n.link)){const groupID=Zotero.Libraries.get(n.link.libraryID).libraryType==='group'?Zotero.Groups.getGroupIDFromLibraryID(n.link.libraryID):null;const location=groupID?'groups/'+groupID:'library';result[n.id]=n.annotationKey?'zotero://open-pdf/'+location+'/items/'+n.link.key+'?annotation='+n.annotationKey:'zotero://select/'+location+'/items/'+n.link.key;}return result;},
+    async sourceLinks(nodes){const result={};for(const n of nodes.filter(n=>n.link)){const groupID=Zotero.Libraries.get(n.link.libraryID).libraryType==='group'?Zotero.Groups.getGroupIDFromLibraryID(n.link.libraryID):null;const location=groupID?'groups/'+groupID:'library';result[n.id]=n.annotationKey?'zotero://open-pdf/'+location+'/items/'+n.link.key+'?annotation='+n.annotationKey:Number.isInteger(n.pageIndex)?'zotero://open-pdf/'+location+'/items/'+n.link.key+'?page='+(n.pageIndex+1):'zotero://select/'+location+'/items/'+n.link.key;}return result;},
     async writeObsidianBundle(bundle,destination){
       if(!bundle||!Array.isArray(bundle.files)||bundle.files.length>50000||!bundle.files.length||typeof bundle.entry!=='string')throw Error('Invalid Obsidian export.');
       const entryParts=bundle.entry.split('/'),root=entryParts.slice(0,2).join('/');
@@ -360,24 +372,24 @@ async function startup({rootURI}) {
       await Zotero.Reader.open(attachment.id, {annotationID: annotation.key});
       Zotero.getMainWindow().focus();
     },
-    async open(link) {
+    async open(link,pageIndex) {
       const item = await Zotero.Items.getByLibraryAndKeyAsync(link.libraryID, link.key);
       if (!item || item.deleted) throw Error('The linked Zotero item is unavailable or in Trash.');
       const win = Zotero.getMainWindow(); win.focus(); await win.ZoteroPane.selectItems([item.id]);
-      if(item.isAttachment()&&item.attachmentContentType==='application/pdf')await Zotero.Reader.open(item.id);
+      if(item.isAttachment()&&item.attachmentContentType==='application/pdf')await Zotero.Reader.open(item.id,Number.isInteger(pageIndex)?{pageIndex}:undefined);
       if (item.isNote()) win.ZoteroPane.openNoteWindow(item.id);
     }
   };
   Object.assign(canvasBridge,CanvasCounterexampleLibrary(canvasBridge));
   canvasBridge.synthesizeSelection=async(items,mode,concept='',focus='')=>{
-    if(!['comparison','concept'].includes(mode)||typeof focus!=='string'||focus.length>500||mode==='comparison'&&(items.length<2||items.length>8)||mode==='concept'&&(items.length!==1||!concept.trim()||concept.length>160))throw Error('Select 2–8 sources to compare, or one source and a concept to explain.');
-    const sources=await Promise.all(items.map((item,index)=>synthesisSource(item,index,mode==='concept'?concept:'',focus)));
+    if(!['comparison','concept','conceptmap'].includes(mode)||typeof focus!=='string'||focus.length>500||mode==='comparison'&&(items.length<2||items.length>8)||mode==='concept'&&(items.length!==1||!concept.trim()||concept.length>160)||mode==='conceptmap'&&(items.length<1||items.length>8||!concept.trim()||concept.length>160))throw Error('Select up to eight sources and name the concept to map.');
+    const sources=[];for(const [index,item] of items.entries())sources.push(await synthesisSource(item,index,mode==='concept'?concept:'',mode==='conceptmap'?concept:focus));
     const available=sources.filter(s=>s.passages.length);
-    if(mode==='comparison'&&available.length<2||mode==='concept'&&!available.length)throw Error('Not enough readable notes, annotations or indexed PDF text. Index the PDFs in Zotero, then try again.');
+    if(mode==='comparison'&&available.length<2||['concept','conceptmap'].includes(mode)&&!available.length)throw Error('Not enough readable notes, annotations or indexed PDF text. Index the PDFs in Zotero, then try again.');
     const jobID='synthesis-'+Services.uuid.generateUUID(),response=await canvasBridge.connectionAIRequest(CanvasSynthesis.prompt(available,mode,concept,focus),jobID);
     const checked=CanvasSynthesis.verify(response.text,available,mode);
-    const name=mode==='concept'?concept.trim()+' — '+available[0].title:'Source comparison — '+available.map(s=>s.author||s.title).join(', ');
-    const board=CanvasSynthesis.build(CanvasModel,checked,mode,name.slice(0,180),response.model);
+    const name=mode==='concept'?concept.trim()+' — '+available[0].title:mode==='conceptmap'?'Concept Map — '+concept.trim():'Source comparison — '+available.map(s=>s.author||s.title).join(', ');
+    const board=CanvasSynthesis.build(CanvasModel,checked,mode,name.slice(0,180),response.model,concept);
     await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id);
     return {id:board.id,claims:checked.claims.length,links:board.edges.length,rejected:checked.rejected,unread:items.length-available.length,passages:available.reduce((count,source)=>count+source.passages.length,0)};
   };
@@ -385,7 +397,9 @@ async function startup({rootURI}) {
   canvasBridge.dashboardCreateBoard=async(title,mode,folderID=null)=>{
     if(!Object.hasOwn(CanvasFormats.modes,mode)||typeof title!=='string'||!title.trim()||title.length>200)throw Error('Invalid canvas details.');
     if(folderID!==null&&!(await canvasBridge.libraryState()).folders.some(f=>f.id===folderID))throw Error('Folder unavailable.');
-    const board=CanvasModel.board(title.trim());board.mode=mode;await canvasBridge.save(board);
+    const board=CanvasModel.board(title.trim());board.mode=mode;
+    if(mode==='conceptmap'){const centre=CanvasModel.node(0,0,title.trim(),'Add source cards around this concept.');centre.width=290;centre.height=150;centre.colour='#e0eee7';centre.border='#287b63';board.nodes.push(centre);}
+    await canvasBridge.save(board);
     if(folderID)await canvasBridge.organise({op:'moveBoard',id:board.id,folderID});
     await canvasBridge.dashboardOpenBoard(board.id);return board.id;
   };
@@ -448,9 +462,9 @@ function onMainWindowLoad({window}) {
     action.addEventListener('command', () => sendToCanvas(window, async () => collection ? window.ZoteroPane.getSelectedCollection().getChildItems() : window.ZoteroPane.getSelectedItems()).catch(error => { Zotero.logError(error); Services.prompt.alert(window, 'Send to Canvas', error.message); }));
     popup.append(action); menuCleanups.push(() => { popup.removeEventListener('popupshowing', update); action.remove(); });
     if(!collection){
-      for(const [kind,label] of [['comparison','Compare selected sources on a canvas...'],['concept','Explain a concept on a canvas...']]){
+      for(const [kind,label] of [['comparison','Compare selected sources on a canvas...'],['concept','Explain a concept on a canvas...'],['conceptmap','Create a Concept Map from selected sources...']]){
         const synth=doc.createXULElement('menuitem');synth.id='research-canvas-'+kind;synth.setAttribute('label',label);
-        const updateSynth=()=>{const selected=window.ZoteroPane.getSelectedItems();synth.disabled=kind==='comparison'?selected.length<2||selected.length>8||selected.some(item=>!item.isRegularItem()):selected.length!==1||!selected[0].isRegularItem();};
+        const updateSynth=()=>{const selected=window.ZoteroPane.getSelectedItems();synth.disabled=kind==='comparison'?selected.length<2||selected.length>8||selected.some(item=>!item.isRegularItem()):kind==='conceptmap'?selected.length<1||selected.length>8||selected.some(item=>!item.isRegularItem()):selected.length!==1||!selected[0].isRegularItem();};
         popup.addEventListener('popupshowing',updateSynth);synth.addEventListener('command',()=>createSourceCanvas(window,kind).catch(error=>{Zotero.logError(error);Services.prompt.alert(window,'Zotero Canvas',error.message);}));
         popup.append(synth);menuCleanups.push(()=>{popup.removeEventListener('popupshowing',updateSynth);synth.remove();});
       }
@@ -462,8 +476,8 @@ function onMainWindowLoad({window}) {
 }
 async function createSourceCanvas(window,mode){
   const items=window.ZoteroPane.getSelectedItems().slice();let concept='',focus='';
-  if(mode==='concept'){
-    const answer={value:''};if(!Services.prompt.prompt(window,'Explain a concept','Which concept from the selected source should the canvas explain?',answer,null,{}))return;
+  if(mode==='concept'||mode==='conceptmap'){
+    const answer={value:''};if(!Services.prompt.prompt(window,mode==='conceptmap'?'Create a Concept Map':'Explain a concept',mode==='conceptmap'?'Which concept should the selected sources map?':'Which concept from the selected source should the canvas explain?',answer,null,{}))return;
     concept=answer.value.trim();if(!concept)throw Error('Enter a concept from the selected source.');
   }else{
     const answer={value:''};if(!Services.prompt.prompt(window,'Compare sources','Focus on a topic, concept or question? Leave blank for a general comparison.',answer,null,{}))return;
