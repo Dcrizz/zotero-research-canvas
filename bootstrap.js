@@ -220,6 +220,12 @@ async function startup({rootURI}) {
         const next=CanvasTemplates.validateLibrary(CanvasModel,library),dir=PathUtils.join(directory,'settings');await IOUtils.makeDirectory(dir,{ignoreExisting:true});const path=PathUtils.join(dir,'templates.json');await IOUtils.writeJSON(path,next,{tmpPath:path+'.tmp',backupFile:path+'.bak'});return next;});
       queue=operation.catch(error=>Zotero.logError(error));return operation;
     },
+    saveDefaultTemplate(mode,board,revision){
+      const operation=queue.then(async()=>{const next=CanvasTemplates.saveDefault(CanvasModel,await this.listTemplates(),mode,board,revision),dir=PathUtils.join(directory,'settings');await IOUtils.makeDirectory(dir,{ignoreExisting:true});const path=PathUtils.join(dir,'templates.json');await IOUtils.writeJSON(path,next,{tmpPath:path+'.tmp',backupFile:path+'.bak'});return next;});queue=operation.catch(error=>Zotero.logError(error));return operation;
+    },
+    resetDefaultTemplates(){
+      const operation=queue.then(async()=>{const next=CanvasTemplates.resetDefaults(CanvasModel,await this.listTemplates()),dir=PathUtils.join(directory,'settings');await IOUtils.makeDirectory(dir,{ignoreExisting:true});const path=PathUtils.join(dir,'templates.json');await IOUtils.writeJSON(path,next,{tmpPath:path+'.tmp',backupFile:path+'.bak'});canvasWindow?.CanvasApp?.defaultTemplatesReset(next.defaultRevision);return next;});queue=operation.catch(error=>Zotero.logError(error));return operation;
+    },
     updateTemplateDefault(mode,id){const operation=queue.then(async()=>{const library=await this.listTemplates();library.defaults[mode]=id;const next=CanvasTemplates.validateLibrary(CanvasModel,library),path=PathUtils.join(directory,'settings','templates.json');await IOUtils.makeDirectory(PathUtils.parent(path),{ignoreExisting:true});await IOUtils.writeJSON(path,next,{tmpPath:path+'.tmp',backupFile:path+'.bak'});return next;});queue=operation.catch(error=>Zotero.logError(error));return operation;},
     deleteTemplate(id){const operation=queue.then(async()=>{const library=await this.listTemplates(),index=library.custom.findIndex(row=>row.id===id);if(index<0)throw Error('Template unavailable.');const [removed]=library.custom.splice(index,1);if(library.defaults[removed.mode]===id)library.defaults[removed.mode]='builtin';const next=CanvasTemplates.validateLibrary(CanvasModel,library),path=PathUtils.join(directory,'settings','templates.json');await IOUtils.writeJSON(path,next,{tmpPath:path+'.tmp',backupFile:path+'.bak'});return next;});queue=operation.catch(error=>Zotero.logError(error));return operation;},
     saveSettings(value){const settings=CanvasSettings.validate(value);const operation=queue.then(async()=>{const dir=PathUtils.join(directory,'settings');await IOUtils.makeDirectory(dir,{ignoreExisting:true});const path=PathUtils.join(dir,'preferences.json');await IOUtils.writeJSON(path,settings,{tmpPath:path+'.tmp',backupFile:path+'.bak'});CanvasModel.setDefaults(settings);canvasWindow?.CanvasApp?.updateDefaults(settings);});queue=operation.catch(error=>Zotero.logError(error));return operation;},
@@ -459,10 +465,10 @@ async function startup({rootURI}) {
     await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id);
     return {id:board.id,claims:checked.claims.length,links:board.edges.length,rejected:checked.rejected,unread:items.length-available.length,passages:available.reduce((count,source)=>count+source.passages.length,0)};
   };
-  canvasBridge.fillTemplate=async(board,focus='',onProgress=null)=>{
+  canvasBridge.fillTemplate=async(board,focus='',onProgress=null,selectedItems=null)=>{
     CanvasModel.validate(board);if(!board.templateDraft)throw Error('Open a template canvas before filling it with AI.');
     if(onProgress!==null&&typeof onProgress!=='function')throw Error('Invalid template progress callback.');
-    const items=Zotero.getMainWindow().ZoteroPane.getSelectedItems();if(items.length<1||items.length>8||items.some(item=>!item.isRegularItem()))throw Error('Select 1–8 regular Zotero sources in the main library pane first.');
+    const items=selectedItems||Zotero.getMainWindow().ZoteroPane.getSelectedItems();if(items.length<1||items.length>8||items.some(item=>!item.isRegularItem()))throw Error('Select 1–8 regular Zotero sources in the main library pane first.');
     const sources=[];for(const [index,item] of items.entries())sources.push(await synthesisSource(item,index,'',focus));
     const available=sources.filter(source=>source.passages.length);if(!available.length)throw Error('The selected sources have no readable saved notes, annotations or indexed PDF text.');
     const checked=await CanvasTemplates.run(board,available,focus,async prompt=>{
@@ -472,11 +478,12 @@ async function startup({rootURI}) {
   };
   canvasBridge.dashboardOpenBoard=async id=>{const window=Zotero.getMainWindow(),win=await ensureCanvas(window);await win.CanvasApp.openBoard(id);win.focus();};
   canvasBridge.dashboardEditTemplate=async(mode,id)=>{
-    if(!CanvasTemplates.formats.includes(mode))throw Error('Choose a structured template format.');
+    if(!CanvasTemplates.modes.includes(mode)||id==='builtin'&&!CanvasTemplates.formats.includes(mode))throw Error('Choose an available template format.');
     const library=await canvasBridge.listTemplates(),custom=library.custom.find(row=>row.id===id&&row.mode===mode);
     if(id!=='builtin'&&!custom)throw Error('The selected template is unavailable.');
-    const board=custom?CanvasTemplates.instantiate(CanvasModel,custom,custom.name):CanvasTemplates.builtIn(CanvasModel,mode,'Custom '+CanvasFormats.modes[mode]);
+    const board=custom?CanvasTemplates.instantiate(CanvasModel,custom,custom.name):CanvasTemplates.defaultBoard(CanvasModel,library,mode,CanvasFormats.modes[mode]+' template');
     if(custom){board.templateSourceID=custom.id;board.templateSourceName=custom.name;}
+    else{board.templateDefaultMode=mode;board.templateDefaultRevision=library.defaultRevision;}
     await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id);return board.id;
   };
   canvasBridge.dashboardCreateBoard=async(title,mode,folderID=null,templateID=null)=>{
@@ -485,7 +492,7 @@ async function startup({rootURI}) {
     const library=await canvasBridge.listTemplates(),chosen=templateID||library.defaults[mode]||'builtin';
     const custom=chosen==='builtin'?null:library.custom.find(row=>row.id===chosen&&row.mode===mode);
     if(chosen!=='builtin'&&!custom)throw Error('The selected canvas template is unavailable.');
-    const board=CanvasTemplates.formats.includes(mode)?chosen==='builtin'?CanvasTemplates.builtIn(CanvasModel,mode,title.trim()):CanvasTemplates.instantiate(CanvasModel,custom,title.trim()):CanvasModel.board(title.trim());
+    const board=custom?CanvasTemplates.instantiate(CanvasModel,custom,title.trim()):CanvasTemplates.formats.includes(mode)?CanvasTemplates.defaultBoard(CanvasModel,library,mode,title.trim()):CanvasModel.board(title.trim());
     board.mode=mode;
     await canvasBridge.save(board);
     if(folderID)await canvasBridge.organise({op:'moveBoard',id:board.id,folderID});
@@ -542,28 +549,42 @@ function onMainWindowLoad({window}) {
   dashboardMenu.addEventListener('command',openDashboard);doc.getElementById('menu_ToolsPopup').appendChild(dashboardMenu);
   menuCleanups.push(()=>dashboardMenu.remove());
   for (const [popupID, collection] of [['zotero-itemmenu', false], ['zotero-collectionmenu', true]]) {
-    const popup = doc.getElementById(popupID);
-    if (!popup) continue;
-    const action = doc.createXULElement('menuitem'); action.id = 'research-canvas-send-' + popupID; action.setAttribute('label', 'Send to Canvas...');
-    const update = () => { action.disabled = collection ? !window.ZoteroPane.getSelectedCollection() : !window.ZoteroPane.getSelectedItems().length; };
-    popup.addEventListener('popupshowing', update);
-    action.addEventListener('command', () => sendToCanvas(window, async () => collection ? window.ZoteroPane.getSelectedCollection().getChildItems() : window.ZoteroPane.getSelectedItems()).catch(error => { Zotero.logError(error); Services.prompt.alert(window, 'Send to Canvas', error.message); }));
-    popup.append(action); menuCleanups.push(() => { popup.removeEventListener('popupshowing', update); action.remove(); });
-    if(!collection){
-      for(const [kind,label] of [['comparison','Compare selected sources on a canvas...'],['concept','Explain a concept as a mind map...'],['conceptmap','Create a Concept Map from selected sources...']]){
-        const synth=doc.createXULElement('menuitem');synth.id='research-canvas-'+kind;synth.setAttribute('label',label);
-        const updateSynth=()=>{const selected=window.ZoteroPane.getSelectedItems();synth.disabled=kind==='comparison'?selected.length<2||selected.length>8||selected.some(item=>!item.isRegularItem()):kind==='conceptmap'?selected.length<1||selected.length>8||selected.some(item=>!item.isRegularItem()):selected.length!==1||!selected[0].isRegularItem();};
-        popup.addEventListener('popupshowing',updateSynth);synth.addEventListener('command',()=>createSourceCanvas(window,kind).catch(error=>{Zotero.logError(error);Services.prompt.alert(window,'Zotero Canvas',error.message);}));
-        popup.append(synth);menuCleanups.push(()=>{popup.removeEventListener('popupshowing',updateSynth);synth.remove();});
-      }
-      const find=doc.createXULElement('menuitem');find.id='research-canvas-find';find.setAttribute('label','Find on Canvases...');
-      const updateFind=()=>{find.disabled=window.ZoteroPane.getSelectedItems().length!==1;};popup.addEventListener('popupshowing',updateFind);
-      find.addEventListener('command',()=>findOnCanvases(window).catch(error=>{Zotero.logError(error);Services.prompt.alert(window,'Find on Canvases',error.message);}));popup.append(find);menuCleanups.push(()=>{popup.removeEventListener('popupshowing',updateFind);find.remove();});
+    const popup=doc.getElementById(popupID);if(!popup)continue;
+    const parent=doc.createXULElement('menu');parent.id='research-canvas-tools-'+popupID;parent.setAttribute('label','Canvas tools');parent.setAttribute('class','menu-iconic');parent.setAttribute('image','chrome://research-canvas/content/icon.png');
+    const tools=doc.createXULElement('menupopup');parent.append(tools);popup.append(parent);
+    const selected=()=>collection?(window.ZoteroPane.getSelectedCollection()?.getChildItems()||[]).filter(item=>item.isRegularItem()):window.ZoteroPane.getSelectedItems().slice();
+    const valid=items=>items.length>=1&&items.length<=8&&items.every(item=>item.isRegularItem());
+    const actions=[];
+    const add=(id,label,icon,enabled,run)=>{
+      const item=doc.createXULElement('menuitem');item.id=id;item.setAttribute('label',label);item.setAttribute('class','menuitem-iconic');item.setAttribute('image','chrome://research-canvas/content/menu-'+icon+'.svg');
+      item.addEventListener('command',()=>Promise.resolve().then(run).catch(error=>{Zotero.logError(error);Services.prompt.alert(window,'Canvas tools',error.message);}));tools.append(item);actions.push({item,enabled});
+    };
+    add('research-canvas-send-'+popupID,'Send to Canvas…','send',items=>!!items.length,()=>sendToCanvas(window,async()=>selected()));
+    for(const [kind,label,icon] of [['comparison','Compare on Canvas','compare'],['conceptmap','Create Concept Map','conceptmap'],['concept','Explain Concept','explain']]){
+      add('research-canvas-'+kind+(collection?'-collection':''),label,icon,items=>valid(items)&&(kind==='comparison'?items.length>=2:kind==='concept'?items.length===1:true),()=>createSourceCanvas(window,kind,selected()));
     }
+    add('research-canvas-custom'+(collection?'-collection':''),'Use custom template…','template',valid,()=>createCustomTemplateCanvas(window,selected()));
+    if(!collection)add('research-canvas-find','Find on Canvases…','find',items=>items.length===1,()=>findOnCanvases(window));
+    const update=event=>{if(event.target!==popup&&event.target!==tools)return;const items=selected();for(const action of actions)action.item.disabled=!action.enabled(items);};
+    popup.addEventListener('popupshowing',update);menuCleanups.push(()=>{popup.removeEventListener('popupshowing',update);parent.remove();});
   }
 }
-async function createSourceCanvas(window,mode){
-  const items=window.ZoteroPane.getSelectedItems().slice();let concept='',focus='';
+async function createCustomTemplateCanvas(window,items){
+  if(items.length<1||items.length>8||items.some(item=>!item.isRegularItem()))throw Error('Select 1–8 Zotero sources first.');
+  const library=await canvasBridge.listTemplates(),templates=library.custom.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  if(!templates.length){Services.prompt.alert(window,'Custom templates','Save an instruction canvas with Save template first. Custom templates are separate from the six format defaults.');return;}
+  const selected={value:0};if(!Services.prompt.select(window,'Use custom template','Choose a custom template:',templates.map(row=>row.name+' — '+CanvasFormats.modes[row.mode]),selected))return;
+  const template=templates[selected.value];if(!template)throw Error('The selected custom template is unavailable.');
+  const answer={value:''};if(!Services.prompt.prompt(window,'Use custom template','Optional topic, concept or question. Leave blank to follow the template instructions.',answer,null,{}))return;
+  const focus=answer.value.trim();if(focus.length>500)throw Error('Keep the canvas focus under 500 characters.');
+  const draft=CanvasTemplates.instantiate(CanvasModel,template,template.name+(focus?' — '+focus.slice(0,100):''));
+  const progress=new Zotero.ProgressWindow({window,closeOnClick:false});progress.changeHeadline('Filling custom template');progress.addDescription('Reading sources and verifying each card against its evidence.');progress.show();
+  let result;try{result=await canvasBridge.fillTemplate(draft,focus,step=>progress.changeHeadline('Filling template: step '+step.index+' of '+step.total),items);await canvasBridge.save(result.board);await canvasBridge.dashboardOpenBoard(result.board.id);}finally{progress.close();}
+  Services.prompt.alert(window,'Canvas created',result.filled+' grounded cards created; '+(result.board.templateOmissions?.length||0)+' conditional branches omitted; '+result.rejected+' unsupported entries excluded; '+result.unread+' source(s) had no readable text. Omitted branches are saved in the canvas report.');
+}
+
+async function createSourceCanvas(window,mode,items=window.ZoteroPane.getSelectedItems().slice()){
+  let concept='',focus='';
   if(mode==='concept'||mode==='conceptmap'){
     const answer={value:''};if(!Services.prompt.prompt(window,mode==='conceptmap'?'Create a Concept Map':'Explain a concept',mode==='conceptmap'?'Which concept should the selected sources map?':'Which concept from the selected source should the canvas explain?',answer,null,{}))return;
     concept=answer.value.trim();if(!concept)throw Error('Enter a concept from the selected source.');

@@ -52,6 +52,7 @@
     if(b.mindmapDirection!==undefined&&!['horizontal','vertical'].includes(b.mindmapDirection))throw Error('Invalid mind map direction.');
     if(b.templateDraft!==undefined&&typeof b.templateDraft!=='boolean')throw Error('Invalid template state.');
     if(b.templateSourceID!==undefined&&(!b.templateDraft||typeof b.templateSourceID!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(b.templateSourceID)||typeof b.templateSourceName!=='string'||!b.templateSourceName.trim()||b.templateSourceName.length>100))throw Error('Invalid template editing source.');
+    if(b.templateDefaultMode!==undefined&&(!b.templateDraft||!F.structured.has(b.templateDefaultMode)||b.mode!==b.templateDefaultMode||!Number.isSafeInteger(b.templateDefaultRevision)||b.templateDefaultRevision<0))throw Error('Invalid default template editor.');
     if(b.templateOmissions!==undefined&&(!Array.isArray(b.templateOmissions)||b.templateOmissions.length>32||b.templateOmissions.some(row=>!row||typeof row.title!=='string'||row.title.length>500||typeof row.condition!=='string'||row.condition.length>300||typeof row.reason!=='string'||row.reason.length>500||typeof row.source!=='string'||row.source.length>100)))throw Error('Invalid template omission report.');
     if (b.filters !== undefined && (!b.filters || ['tag','author','year','itemType','colourFamily'].some(k => typeof b.filters[k] !== 'string') || !['dim','hide'].includes(b.filters.mode))) throw Error('Invalid filters.');
     const ids = new Set();

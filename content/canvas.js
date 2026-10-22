@@ -34,6 +34,7 @@ const bridge = window.arguments?.[0] || {
   async saveMeanings(values) { localStorage.setItem('research-canvas-meanings',JSON.stringify(values)); },
   async listTemplates(){return CanvasTemplates.validateLibrary(M,JSON.parse(localStorage.getItem('research-canvas-templates')||JSON.stringify(CanvasTemplates.empty())));},
   async saveTemplate(template,makeDefault=false){const library=await this.listTemplates();library.custom=[...library.custom.filter(row=>row.id!==template.id),template];if(makeDefault)library.defaults[template.mode]=template.id;localStorage.setItem('research-canvas-templates',JSON.stringify(CanvasTemplates.validateLibrary(M,library)));},
+  async saveDefaultTemplate(mode,board,revision){const library=CanvasTemplates.saveDefault(M,await this.listTemplates(),mode,board,revision);localStorage.setItem('research-canvas-templates',JSON.stringify(library));},
   async fillTemplate(){throw Error('AI template filling is available when installed in Zotero.');},
   async selected() { throw Error('Zotero selection is available when installed in Zotero.'); },
   async open() { throw Error('Open linked items from the installed Zotero plugin.'); }
@@ -62,9 +63,9 @@ function flush() {
   clearTimeout(saveTimer);
   if (!ready || savedRevision === revision) return saveChain;
   const snapshot = M.validate(board), rev = revision;
-  const job = saveChain.then(() => bridge.save(snapshot)).then(async () => {
+  const job = saveChain.then(async () => {await bridge.save(snapshot);if(snapshot.templateDefaultMode){if(!bridge.saveDefaultTemplate)throw Error('Default template storage is unavailable.');await bridge.saveDefaultTemplate(snapshot.templateDefaultMode,snapshot,snapshot.templateDefaultRevision);}}).then(async () => {
     savedRevision = rev;
-    if (revision === rev) status('Saved locally');
+    if (revision === rev) status(snapshot.templateDefaultMode?'Template saved automatically':'Saved locally');
     const option = [...$('boards').options].find(o => o.value === snapshot.id);
     if (option) option.textContent = snapshot.title;
     await explorer?.refresh();
@@ -255,14 +256,15 @@ function render() {
   const positions = M.positions(board);
   $('world').style.transform = `translate(${board.view.x}px,${board.view.y}px) scale(${board.view.zoom})`;
   $('zoom').textContent = Math.round(board.view.zoom * 100) + '%';
-  $('mode').value = board.mode; $('mode')._canvasChoices?.sync(); $('board-title').value = board.title;
+  $('mode').value = board.mode;$('mode').disabled=!!board.templateDefaultMode; $('mode')._canvasChoices?.sync(); $('board-title').value = board.title;
+  if($('mode-toggle'))$('mode-toggle').disabled=!!board.templateDefaultMode;
   if($('mode-toggle'))$('mode-toggle').textContent=$('mode').selectedOptions[0].textContent+' ▾';
   $('mindmap-direction').hidden=board.mode!=='mindmap';
   $('reflow-layout').hidden=!M.layoutKey(board);
   for(const button of $('mindmap-direction').querySelectorAll('button'))button.setAttribute('aria-pressed',String(button.dataset.direction===(board.mindmapDirection||'horizontal')));
   $('empty').hidden = !!board.nodes.length || !!board.frames?.length || !!board.edges.length;
-  $('template-save').hidden=!CanvasTemplates.formats.includes(board.mode)||!board.templateDraft;
-  $('template-fill').hidden=!CanvasTemplates.formats.includes(board.mode)||!board.templateDraft;
+  $('template-save').hidden=!CanvasTemplates.modes.includes(board.mode)||!board.nodes.some(n=>!n.junction)||board.nodes.some(n=>n.link||n.kind||n.objectType);
+  $('template-fill').hidden=!CanvasTemplates.modes.includes(board.mode)||!board.templateDraft;
   $('template-omissions').hidden=!board.templateOmissions?.length;
   if(board.mode==='matrix')$('empty').innerHTML='Choose sources in Zotero.<br/><small>Select items in the main library pane, then click + Zotero selection above, or drag them here.</small>';
   else $('empty').innerHTML='Start with an idea.<br/><small>Add a card or bring in your Zotero selection.</small>';
@@ -679,10 +681,12 @@ async function switchBoard(id) {
   if(!(await bridge.list()).some(b=>b.id===id))throw Error('Canvas is unavailable or in Trash. Restore it from the Explorer.');
   await saveInlineNotes(true);
   await closeNote();
-  await flush(); const next = await bridge.load(id); board = next;
+  await flush(); const next = await checkTemplateEditor(await bridge.load(id)); board = next;
   selection = null; undo = []; redo = []; revision = 0; savedRevision = 0;
   render(); inspector(); await refreshList(); $('undo').disabled = true; $('redo').disabled = true; status('Saved locally'); await refreshNotes();
 }
+async function checkTemplateEditor(next){if(next.templateDefaultMode&&bridge.listTemplates){const library=await bridge.listTemplates();if(next.templateDefaultRevision!==(library.defaultRevision??0)){delete next.templateDefaultMode;delete next.templateDefaultRevision;}}return next;}
+function defaultTemplatesReset(value){let detached=false;for(const snapshot of [board,...undo,...redo])if(snapshot?.templateDefaultMode&&snapshot.templateDefaultRevision<value){delete snapshot.templateDefaultMode;delete snapshot.templateDefaultRevision;detached=true;}if(detached){changed();render();status('Defaults restored. Reopen a default template from Templates to edit it.');}}
 async function restoreBoard(snapshot){
   const next=M.validate(snapshot);await saveInlineNotes(true);await closeNote();await flush();next.id=M.board().id;next.title+=' (restored)';await bridge.save(next);board=next;revision=savedRevision=0;selection=null;undo=[];redo=[];await refreshList();render();inspector();await refreshNotes();fit();await flush();
 }
@@ -712,7 +716,7 @@ let templateAction=null,templateGeneration=0;
 function openTemplateDialog(action){
   templateAction=action;templateGeneration++;$('template-dialog-title').textContent=action==='save'?'Save canvas template':'Fill template with AI';
   $('template-dialog-help').textContent=action==='save'?'Edit the cards and their AI instructions first. Begin a conditional card with “Only if: …” to require explicit source support. This saves a reusable, source-free template for this format.':'Select 1–8 regular Zotero sources. Cards headed 1. Definition, 2. Alternative view, and so on run in number order; unnumbered cards run together afterward. Cards beginning “Only if: …” are created only when supported; omitted reasons appear after filling. Each numbered step makes one AI request.';
-  $('template-name-row').hidden=action!=='save';$('template-focus-row').hidden=action!=='fill';$('template-default-row').hidden=action!=='save';
+  $('template-name-row').hidden=action!=='save';$('template-focus-row').hidden=action!=='fill';$('template-default-row').hidden=action!=='save'||!CanvasTemplates.formats.includes(board.mode);
   $('template-confirm').textContent=action==='save'?'Save template':'Fill cards';$('template-name').required=action==='save';
   $('template-name').value=action==='save'?(board.templateSourceName||''):'';$('template-focus').value='';$('template-default').checked=false;$('template-dialog-status').textContent='';$('template-dialog-shade').hidden=false;
   if(action==='save'&&board.templateSourceID)$('template-dialog-help').textContent='Save changes to this template. New canvases created from it will use these instructions.';
@@ -732,7 +736,7 @@ async function submitTemplateDialog(){
     if(action==='save'){
       if(!bridge.saveTemplate)throw Error('Template storage is unavailable.');
       const template=CanvasTemplates.capture(M,board,$('template-name').value,board.templateSourceID||crypto.randomUUID());
-      await bridge.saveTemplate(template,$('template-default').checked);board.templateSourceID=template.id;board.templateSourceName=template.name;changed();await flush();closeTemplateDialog();status('Template saved for '+CanvasFormats.modes[board.mode]);
+      await bridge.saveTemplate(template,CanvasTemplates.formats.includes(board.mode)&&$('template-default').checked);board.templateDraft=true;board.templateSourceID=template.id;board.templateSourceName=template.name;changed();render();await flush();closeTemplateDialog();status('Custom template saved');
     }else{
       const result=await bridge.fillTemplate(M.clone(board),$('template-focus').value,step=>{
         if(generation!==templateGeneration)throw Error('Template fill dismissed.');
@@ -751,7 +755,7 @@ function bind() {
     if(!bridge.openDashboard)throw Error('The dashboard is available in the installed Zotero plugin.');
     finishLabel();await saveInlineNotes(true);await closeNote();await flush();await bridge.openDashboard();
   });
-  $('template-save').onclick=()=>openTemplateDialog('save');$('template-fill').onclick=()=>openTemplateDialog('fill');$('template-cancel').onclick=closeTemplateDialog;
+  $('template-save').onclick=act(async()=>{if(board.templateDefaultMode){finishLabel();await flush();status('Template saved automatically');}else openTemplateDialog('save');});$('template-fill').onclick=()=>openTemplateDialog('fill');$('template-cancel').onclick=closeTemplateDialog;
   $('template-omissions').onclick=showTemplateOmissions;$('template-omissions-close').onclick=()=>{$('template-omissions-panel').hidden=true;};
   $('template-dialog-shade').onclick=event=>{if(event.target===$('template-dialog-shade'))closeTemplateDialog();};
   $('template-dialog').onsubmit=event=>{event.preventDefault();submitTemplateDialog().catch(report);};
@@ -1034,12 +1038,12 @@ async function drawCanvasPreview(n,body){
 }
 const embedRefresh=setInterval(()=>{if(!ready||document.hidden)return;for(const n of board.nodes.filter(n=>n.kind==='canvas')){const body=[...$('cards').children].find(c=>c.dataset.id===n.id)?.querySelector('.body');if(body)drawCanvasPreview(n,body).catch(report);}},2500);
 window.addEventListener('unload',()=>clearInterval(embedRefresh),{once:true});
-window.CanvasApp = {placeObject:(spec,at)=>objectTools.place(spec,at),updateDefaults:value=>M.setDefaults(value),refreshMeanings:values=>{customMeanings=values.map(p=>M.meaning(p.id,p.title,p));renderMeanings();}, obsidianBundle:()=>workspace.obsidianBundle(), createBoard, openBoard:switchBoard, renameBoard, trashBoard, insertCanvas, refreshExplorer:()=>explorer.refresh(), jumpTo, restoreBoard, exportData: options => workspace.exportData(options), async receiveItems(id, items) { await refreshList(); if (board.id !== id) await switchBoard(id); addItems(items, (80 - board.view.x) / board.view.zoom, (100 - board.view.y) / board.view.zoom); fit(); await flush(); },async flush() { finishLabel(); await saveInlineNotes(); await refreshNotes(); await Promise.allSettled([...relationTasks]); await flush(); }, closeNote, closeInlineNotes: () => saveInlineNotes(true), closeNoteMenu() { if (noteMenuID) { noteMenuID = null; render(); } }, noteStatus, previewWarning, previewRevoked(id) { const slot = [...$('cards').querySelectorAll('.note-preview')].find(el => el.closest('.card').dataset.id === id); if (slot && slot.dataset.editable !== 'false') { slot.dataset.editing = 'false'; slot.dataset.editable = 'false'; render(); } }, styleNote(id) { if (board.nodes.some(n => n.id === id && n.kind === 'note')) openStyles('node', id); }, getBoard: () => board ? M.clone(board) : null};
+window.CanvasApp = {defaultTemplatesReset,placeObject:(spec,at)=>objectTools.place(spec,at),updateDefaults:value=>M.setDefaults(value),refreshMeanings:values=>{customMeanings=values.map(p=>M.meaning(p.id,p.title,p));renderMeanings();}, obsidianBundle:()=>workspace.obsidianBundle(), createBoard, openBoard:switchBoard, renameBoard, trashBoard, insertCanvas, refreshExplorer:()=>explorer.refresh(), jumpTo, restoreBoard, exportData: options => workspace.exportData(options), async receiveItems(id, items) { await refreshList(); if (board.id !== id) await switchBoard(id); addItems(items, (80 - board.view.x) / board.view.zoom, (100 - board.view.y) / board.view.zoom); fit(); await flush(); },async flush() { finishLabel(); await saveInlineNotes(); await refreshNotes(); await Promise.allSettled([...relationTasks]); await flush(); }, closeNote, closeInlineNotes: () => saveInlineNotes(true), closeNoteMenu() { if (noteMenuID) { noteMenuID = null; render(); } }, noteStatus, previewWarning, previewRevoked(id) { const slot = [...$('cards').querySelectorAll('.note-preview')].find(el => el.closest('.card').dataset.id === id); if (slot && slot.dataset.editable !== 'false') { slot.dataset.editing = 'false'; slot.dataset.editable = 'false'; render(); } }, styleNote(id) { if (board.nodes.some(n => n.id === id && n.kind === 'note')) openStyles('node', id); }, getBoard: () => board ? M.clone(board) : null};
 (async () => {
   try {
     if(bridge.getSettings)M.setDefaults(await bridge.getSettings());
     const list = await bridge.list();
-    board = list.length ? await bridge.load(list[0].id) : M.board();
+    board = list.length ? await checkTemplateEditor(await bridge.load(list[0].id)) : M.board();
     if (!list.length) await bridge.save(board);
     for (const button of $('search-methods').children) button.onclick = () => { $('search-mode').value = button.dataset.method; for (const other of $('search-methods').children) other.setAttribute('aria-pressed', String(other === button)); };
     for (const button of $('search-types').children) button.onclick = () => { for (const other of $('search-types').children) other.setAttribute('aria-pressed', String(other === button)); if ($('search-query').value.trim().length >= 2) $('search-form').dispatchEvent(new Event('submit', {cancelable:true})); };

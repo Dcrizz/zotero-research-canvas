@@ -6,9 +6,20 @@ window.addEventListener('DOMContentLoaded',()=>{
   const svgNS='http://www.w3.org/2000/svg';
   const svg=(tag,attributes={})=>{const element=document.createElementNS(svgNS,tag);for(const [key,value] of Object.entries(attributes))element.setAttribute(key,String(value));return element;};
   let rows=[],library,folderID=null,layout='grid',dialogKind=null,request=0,templateLibrary=CanvasTemplates.empty(),deletePending=false;
-  let managerLibrary=CanvasTemplates.empty();
+  let managerLibrary=CanvasTemplates.empty(),resetDefaultsPending=false,deleteCustomPending=false;
   const fail=error=>{console.error(error);$('status').textContent=error.message||String(error);$('status').classList.add('error');};
   const act=fn=>()=>Promise.resolve().then(fn).catch(fail);
+  const templatePickers=[];
+  function templatePicker(select,label){
+    const choices=CanvasChoices.attach(select,{label,layout:'list'}),wrapper=document.createElement('div'),toggle=document.createElement('button');wrapper.className='template-select';toggle.type='button';toggle.className='template-select-toggle';toggle.setAttribute('aria-label',label);toggle.setAttribute('aria-expanded','false');toggle.setAttribute('aria-haspopup','true');choices.group.id=select.id+'-choices';toggle.setAttribute('aria-controls',choices.group.id);
+    choices.group.replaceWith(wrapper);wrapper.append(toggle,choices.group);choices.group.hidden=true;
+    const close=()=>{choices.group.hidden=true;toggle.setAttribute('aria-expanded','false');};
+    const sync=()=>{toggle.textContent=select.selectedOptions[0]?.textContent||'Choose a template';};
+    toggle.onclick=()=>{const open=choices.group.hidden;for(const picker of templatePickers)picker.close();choices.group.hidden=!open;toggle.setAttribute('aria-expanded',String(open));if(open)choices.focus();};
+    select.addEventListener('change',()=>{sync();close();toggle.focus({preventScroll:true});});
+    const api={wrapper,toggle,choices,close,refresh(){choices.refresh();sync();}};templatePickers.push(api);sync();return api;
+  }
+  document.addEventListener('pointerdown',event=>{for(const picker of templatePickers)if(!picker.wrapper.contains(event.target))picker.close();});
   function preview(board){
     const host=document.createElement('div');host.className='tile-preview';
     if(!board.nodes.length&&!board.edges.length){const mark=document.createElement('span');mark.className='empty-mark';mark.textContent=board.mode==='mindmap'?'✳':'◇';host.append(mark);return host;}
@@ -73,26 +84,35 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
   function renderTemplateManagerChoices(selected){
     const mode=$('manage-format').value,list=$('manage-template');list.replaceChildren();
-    for(const row of [{id:'builtin',name:'Built-in '+CanvasFormats.modes[mode]},...managerLibrary.custom.filter(t=>t.mode===mode)]){const option=document.createElement('option');option.value=row.id;option.textContent=row.name;list.append(option);}
-    list.value=[...list.options].some(o=>o.value===selected)?selected:managerLibrary.defaults[mode]||'builtin';renderTemplateManager();
+    for(const row of mode==='custom'?managerLibrary.custom:[{id:'builtin',name:'Default '+CanvasFormats.modes[mode]},...managerLibrary.custom.filter(t=>t.mode===mode)]){const option=document.createElement('option');option.value=row.id;option.textContent=row.name;list.append(option);}
+    list.value=[...list.options].some(o=>o.value===selected)?selected:mode==='custom'?list.options[0]?.value||'':managerLibrary.defaults[mode]||'builtin';managerTemplatePicker.refresh();renderTemplateManager();
   }
   function renderTemplateManager(){
-    const mode=$('manage-format').value,id=$('manage-template').value,custom=managerLibrary.custom.find(row=>row.id===id&&row.mode===mode);
-    const board=custom?custom.board:CanvasTemplates.builtIn(M,mode,'Built-in '+CanvasFormats.modes[mode]);
+    const category=$('manage-format').value,id=$('manage-template').value,custom=managerLibrary.custom.find(row=>row.id===id&&(category==='custom'||row.mode===category)),mode=custom?.mode||category;
+    deleteCustomPending=false;$('manage-template-delete').hidden=!custom;$('manage-template-delete').textContent='Delete custom template';$('manage-template-edit').disabled=!id;
+    if(!id){$('manage-template-preview').replaceChildren();$('manage-template-cards').replaceChildren();$('manage-template-default').disabled=true;$('manage-template-status').textContent='No custom templates saved yet.';$('template-edit-hint').textContent='Create a freeform canvas with instruction cards, then use Save template. Right-click Zotero sources → Canvas tools → Use custom template to fill it.';return;}
+    const board=custom?custom.board:managerLibrary.builtinOverrides?.[mode]||CanvasTemplates.builtIn(M,mode,'Default '+CanvasFormats.modes[mode]);
     $('manage-template-preview').replaceChildren(preview(board));const cards=$('manage-template-cards');cards.replaceChildren();
     for(const node of board.nodes.filter(n=>!n.junction)){const item=document.createElement('details'),title=document.createElement('summary'),text=document.createElement('p');title.textContent=node.title;text.textContent=node.text;item.append(title,text);cards.append(item);}
-    const isDefault=(managerLibrary.defaults[mode]||'builtin')===id;$('manage-template-default').disabled=isDefault;$('manage-template-default').textContent=isDefault?'Current default':'Use by default';
-    $('manage-template-status').textContent=custom?'Saved template · '+CanvasFormats.modes[mode]:'Built-in template · edit to create your own copy';
+    const isDefault=(managerLibrary.defaults[mode]||'builtin')===id;$('manage-template-default').disabled=isDefault||!CanvasTemplates.formats.includes(mode);$('manage-template-default').textContent=!CanvasTemplates.formats.includes(mode)?'Custom template':isDefault?'Current default':'Use by default';
+    $('manage-template-status').textContent=custom?'Saved template · '+CanvasFormats.modes[mode]:managerLibrary.builtinOverrides?.[mode]?'Customised default · '+CanvasFormats.modes[mode]:'Built-in default · '+CanvasFormats.modes[mode];
+    $('template-edit-hint').textContent=custom?'Editing opens a draft. Use Save template to update this named template.':'Edits to this format default save automatically. Return to the dashboard when you are finished; no name is required.';
+    resetDefaultsPending=false;$('reset-default-templates').textContent='Restore built-in defaults';
   }
   async function refreshTemplateManager(){if(!bridge.listTemplates)throw Error('Template storage is unavailable.');const selected=$('manage-template').value;managerLibrary=await bridge.listTemplates();renderTemplateManagerChoices(selected);}
   for(const mode of CanvasTemplates.formats){const option=document.createElement('option');option.value=mode;option.textContent=CanvasFormats.modes[mode];$('manage-format').append(option);}
-  async function openTemplates(){await refreshTemplateManager();$('templates-shade').hidden=false;$('manage-format').focus();}
+  const customCategory=document.createElement('option');customCategory.value='custom';customCategory.textContent='Custom templates (all formats)';$('manage-format').append(customCategory);
+  const selectedTemplateMode=()=>managerLibrary.custom.find(row=>row.id===$('manage-template').value)?.mode||$('manage-format').value;
+  const managerFormatPicker=templatePicker($('manage-format'),'Template format'),managerTemplatePicker=templatePicker($('manage-template'),'Saved template'),creationTemplatePicker=templatePicker($('new-template'),'Starting template');
+  async function openTemplates(){await refreshTemplateManager();$('templates-shade').hidden=false;managerFormatPicker.toggle.focus();}
   $('manage-templates').onclick=act(openTemplates);
   $('manage-format').onchange=()=>renderTemplateManagerChoices();$('manage-template').onchange=renderTemplateManager;
-  $('close-templates').onclick=()=>{$('templates-shade').hidden=true;$('manage-templates').focus();};
+  $('close-templates').onclick=()=>{for(const picker of templatePickers)picker.close();$('templates-shade').hidden=true;$('manage-templates').focus();};
   $('templates-shade').onclick=event=>{if(event.target===$('templates-shade'))$('close-templates').click();};
-  $('manage-template-default').onclick=act(async()=>{if(!bridge.updateTemplateDefault)throw Error('Template defaults are unavailable.');await bridge.updateTemplateDefault($('manage-format').value,$('manage-template').value);await refreshTemplateManager();});
-  $('manage-template-edit').onclick=act(async()=>{if(!bridge.dashboardEditTemplate)throw Error('Template editing is available in the installed Zotero plugin.');await bridge.dashboardEditTemplate($('manage-format').value,$('manage-template').value);});
+  $('manage-template-default').onclick=act(async()=>{if(!bridge.updateTemplateDefault)throw Error('Template defaults are unavailable.');await bridge.updateTemplateDefault(selectedTemplateMode(),$('manage-template').value);await refreshTemplateManager();});
+  $('manage-template-edit').onclick=act(async()=>{if(!bridge.dashboardEditTemplate)throw Error('Template editing is available in the installed Zotero plugin.');await bridge.dashboardEditTemplate(selectedTemplateMode(),$('manage-template').value);});
+  $('manage-template-delete').onclick=act(async()=>{if(!deleteCustomPending){deleteCustomPending=true;$('manage-template-delete').textContent='Confirm delete template';return;}if(!bridge.deleteTemplate)throw Error('Template deletion is unavailable.');await bridge.deleteTemplate($('manage-template').value);await refreshTemplateManager();});
+  $('reset-default-templates').onclick=act(async()=>{if(!resetDefaultsPending){resetDefaultsPending=true;$('reset-default-templates').textContent='Confirm restore defaults';$('manage-template-status').textContent='Restore all six built-in format templates and their default selections? Named custom templates will stay saved.';return;}if(!bridge.resetDefaultTemplates)throw Error('Default template reset is unavailable.');await bridge.resetDefaultTemplates();$('manage-template').value='builtin';await refreshTemplateManager();$('manage-template-status').textContent='All six format defaults restored. Named custom templates are still available.';});
   async function openDialog(kind){
     dialogKind=kind;$('dialog-title').textContent=kind==='folder'?'New folder':'New '+CanvasFormats.modes[kind].toLowerCase();$('new-name').value='';deletePending=false;
     const structured=CanvasTemplates.formats.includes(kind);$('template-choice').hidden=!structured;
@@ -100,18 +120,18 @@ window.addEventListener('DOMContentLoaded',()=>{
     $('dialog-shade').hidden=false;$('new-name').focus();
   }
   function renderTemplateChoices(selected){
-    const list=$('new-template');list.replaceChildren();const builtin=document.createElement('option');builtin.value='builtin';builtin.textContent='Built-in '+CanvasFormats.modes[dialogKind];list.append(builtin);
+    const list=$('new-template');list.replaceChildren();const builtin=document.createElement('option');builtin.value='builtin';builtin.textContent='Default '+CanvasFormats.modes[dialogKind];list.append(builtin);
     for(const row of templateLibrary.custom.filter(row=>row.mode===dialogKind)){const option=document.createElement('option');option.value=row.id;option.textContent=row.name;list.append(option);}
-    list.value=selected||templateLibrary.defaults[dialogKind]||'builtin';$('template-default').checked=false;$('delete-template').hidden=list.value==='builtin';$('delete-template').textContent='Remove selected template';deletePending=false;
+    list.value=selected||templateLibrary.defaults[dialogKind]||'builtin';creationTemplatePicker.refresh();$('template-default').checked=false;$('delete-template').hidden=list.value==='builtin';$('delete-template').textContent='Remove selected template';deletePending=false;
   }
-  function closeDialog(){$('dialog-shade').hidden=true;dialogKind=null;}
+  function closeDialog(){for(const picker of templatePickers)picker.close();$('dialog-shade').hidden=true;dialogKind=null;}
   $('new-freeform').onclick=act(()=>openDialog('canvas'));$('new-mindmap').onclick=act(()=>openDialog('mindmap'));$('new-folder').onclick=act(()=>openDialog('folder'));
   for(const button of document.querySelectorAll('[data-create-mode]'))button.onclick=act(()=>openDialog(button.dataset.createMode));
   $('new-template').onchange=()=>{deletePending=false;$('delete-template').textContent='Remove selected template';$('delete-template').hidden=$('new-template').value==='builtin';};
   $('delete-template').onclick=act(async()=>{if(!deletePending){deletePending=true;$('delete-template').textContent='Click again to remove';return;}if(!bridge.deleteTemplate)throw Error('Template storage is unavailable.');await bridge.deleteTemplate($('new-template').value);templateLibrary=await bridge.listTemplates();renderTemplateChoices();});
   $('cancel-dialog').onclick=closeDialog;
   $('dialog-shade').onclick=event=>{if(event.target===$('dialog-shade'))closeDialog();};
-  document.addEventListener('keydown',event=>{if(event.key==='Escape'){if(!$('dialog-shade').hidden)closeDialog();if(!$('templates-shade').hidden)$('close-templates').click();}});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'){const open=templatePickers.find(p=>!p.choices.group.hidden);if(open){open.close();open.toggle.focus();return;}if(!$('dialog-shade').hidden)closeDialog();if(!$('templates-shade').hidden)$('close-templates').click();}});
   $('create-dialog').onsubmit=event=>{event.preventDefault();const name=$('new-name').value.trim(),kind=dialogKind;if(!name)return;
     const template=CanvasTemplates.formats.includes(kind)?$('new-template').value:null,makeDefault=template&&$('template-default').checked;
     closeDialog();Promise.resolve().then(async()=>{if(kind==='folder')await bridge.dashboardCreateFolder(name,folderID);else{if(makeDefault&&bridge.updateTemplateDefault)await bridge.updateTemplateDefault(kind,template);await bridge.dashboardCreateBoard(name,kind,folderID,template);}await refresh();}).catch(fail);

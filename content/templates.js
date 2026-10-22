@@ -1,6 +1,7 @@
 (function(root){
   'use strict';
   const formats=['conceptmap','evidence','matrix','timeline','literature','process'];
+  const modes=['canvas','mindmap',...formats];
   const specs={
     conceptmap:{nodes:[
       ['definition','Definition','Definition: Explain how the source defines the concept and its scope.\n\nAlternative view: If the same source passage names a competing conceptualisation, summarise it; otherwise omit this section.\n\nInclude an author-year reference and a verified page when available.',0,0,'#e5f0eb'],
@@ -65,18 +66,22 @@
   function validateLibrary(M,value){
     if(!value||value.version!==1||!Array.isArray(value.custom)||value.custom.length>100||!value.defaults||typeof value.defaults!=='object')throw Error('Invalid saved canvas templates.');
     const ids=new Set(),custom=value.custom.map(row=>{
-      if(!row||typeof row.id!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(row.id)||ids.has(row.id)||typeof row.name!=='string'||!row.name.trim()||row.name.length>100||!formats.includes(row.mode))throw Error('Invalid saved canvas template.');
+      if(!row||typeof row.id!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(row.id)||ids.has(row.id)||typeof row.name!=='string'||!row.name.trim()||row.name.length>100||!modes.includes(row.mode))throw Error('Invalid saved canvas template.');
       ids.add(row.id);const board=M.validate(row.board);if(board.mode!==row.mode||!board.templateDraft||board.nodes.length>40||board.edges.length>80||board.nodes.some(n=>n.link||n.kind||n.objectType||n.text.length>3000))throw Error('Saved templates must contain editable instruction cards without Zotero source content.');
       return {...row,name:row.name.trim(),board};
     });
     if(Object.entries(value.defaults).some(([mode,id])=>!formats.includes(mode)||id!=='builtin'&&!custom.some(row=>row.id===id&&row.mode===mode)))throw Error('A default canvas template is unavailable.');
-    return {version:1,custom,defaults:{...value.defaults}};
+    const builtinOverrides=value.builtinOverrides||{},defaultRevision=value.defaultRevision??0;
+    if(typeof builtinOverrides!=='object'||Array.isArray(builtinOverrides)||!Number.isSafeInteger(defaultRevision)||defaultRevision<0)throw Error('Invalid default canvas templates.');
+    const overrides={};for(const [mode,value] of Object.entries(builtinOverrides)){assertMode(mode);const board=M.validate(value);if(board.mode!==mode||!board.templateDraft||board.nodes.length>40||board.edges.length>80||board.nodes.some(n=>n.link||n.kind||n.objectType||n.text.length>3000))throw Error('Default templates must contain editable instruction cards.');overrides[mode]=board;}
+    return {version:1,custom,defaults:{...value.defaults},builtinOverrides:overrides,defaultRevision};
   }
-  const empty=()=>({version:1,custom:[],defaults:{}});
+  const empty=()=>({version:1,custom:[],defaults:{},builtinOverrides:{},defaultRevision:0});
   function capture(M,board,name,id=globalThis.crypto.randomUUID()){
-    if(!board.templateDraft||!formats.includes(board.mode)||typeof name!=='string'||!name.trim()||name.length>100)throw Error('Open an editable structured template canvas and give the template a name.');
+    if(!modes.includes(board.mode)||typeof name!=='string'||!name.trim()||name.length>100)throw Error('Open an editable instruction canvas and give the template a name.');
     const clean=M.validate(board);if(clean.nodes.some(n=>n.link||n.kind||n.objectType)||clean.nodes.length>40||clean.edges.length>80)throw Error('Templates can only contain editable instruction cards; remove linked Zotero cards and file objects first.');
-    delete clean.templateSourceID;delete clean.templateSourceName;clean.title=name.trim();clean.view={x:60,y:60,zoom:1};return {id,name:name.trim(),mode:clean.mode,board:clean};
+    if(!clean.nodes.some(n=>!n.junction))throw Error('Add at least one instruction card before saving a template.');
+    clean.templateDraft=true;delete clean.templateSourceID;delete clean.templateSourceName;delete clean.templateDefaultMode;delete clean.templateDefaultRevision;clean.title=name.trim();clean.view={x:60,y:60,zoom:1};return {id,name:name.trim(),mode:clean.mode,board:clean};
   }
   function instantiate(M,template,title){
     const source=M.validate(template.board),board=M.board(title),ids=new Map();board.mode=source.mode;board.templateDraft=true;
@@ -86,8 +91,16 @@
     if(source.frames)board.frames=source.frames.map(f=>({...M.clone(f),id:globalThis.crypto.randomUUID(),members:f.members.map(id=>ids.get(id))}));
     return M.validate(board);
   }
+  function defaultBoard(M,library,mode,title){assertMode(mode);const saved=library.builtinOverrides?.[mode];return saved?instantiate(M,{board:saved},title):builtIn(M,mode,title);}
+  function saveDefault(M,library,mode,board,revision){
+    const next=validateLibrary(M,library);assertMode(mode);
+    if(revision!==next.defaultRevision)throw Error('Default templates were restored after this editor opened. Reopen the template from the dashboard before editing.');
+    if(board.mode!==mode)throw Error('Keep the default template in its original canvas format.');
+    next.builtinOverrides[mode]=capture(M,board,'Default '+mode).board;next.defaults[mode]='builtin';return validateLibrary(M,next);
+  }
+  function resetDefaults(M,library){const next=validateLibrary(M,library);next.builtinOverrides={};next.defaults={};next.defaultRevision++;return validateLibrary(M,next);}
   function tasks(board,sources){
-    if(!board.templateDraft||!formats.includes(board.mode)||!Array.isArray(sources)||!sources.length||sources.length>8)throw Error('Open a structured template and select 1–8 Zotero sources.');
+    if(!board.templateDraft||!modes.includes(board.mode)||!Array.isArray(sources)||!sources.length||sources.length>8)throw Error('Open an instruction template and select 1–8 Zotero sources.');
     if(board.nodes.some(n=>n.link||n.kind||n.objectType))throw Error('This template contains linked source cards or file objects. Keep sources selected in Zotero rather than adding them to the instruction canvas.');
     if(board.nodes.some(n=>!n.junction&&!n.text.trim()))throw Error('Give every template card an AI instruction before filling it.');
     const result=[];for(const n of board.nodes){if(n.junction)continue;
@@ -163,9 +176,9 @@
     }
     if(result.frames)result.frames=result.frames.map(frame=>({...frame,members:frame.members.flatMap(id=>[...(mapping.get(id)?.values()||[])])})).filter(frame=>frame.members.length);
     result.templateDraft=false;
-    delete result.templateSourceID;delete result.templateSourceName;
+    delete result.templateSourceID;delete result.templateSourceName;delete result.templateDefaultMode;delete result.templateDefaultRevision;
     if(checked.omissions?.length)result.templateOmissions=checked.omissions.map(({task,reason})=>({title:task.node.title,condition:condition(task.node),reason,source:task.source||''}));
     return M.validate(result);
   }
-  const api={formats,empty,builtIn,validateLibrary,capture,instantiate,tasks,stepNumber,condition,sequence,prompt,verify,run,fill};root.CanvasTemplates=api;if(typeof module!=='undefined')module.exports=api;
+  const api={formats,modes,empty,builtIn,defaultBoard,saveDefault,resetDefaults,validateLibrary,capture,instantiate,tasks,stepNumber,condition,sequence,prompt,verify,run,fill};root.CanvasTemplates=api;if(typeof module!=='undefined')module.exports=api;
 })(globalThis);

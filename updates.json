@@ -113,9 +113,9 @@
           }
         },
         {
-          "version": "0.31.1",
-          "update_link": "https://github.com/Dcrizz/zotero-research-canvas/releases/download/v0.31.1/zotero-canvas-0.31.1.xpi",
-          "update_hash": "sha256:51d55131e180fc9840075789486308373e0a6c497ea0b39b4b5720954c73ae3b",
+          "version": "0.33.0",
+          "update_link": "https://github.com/Dcrizz/zotero-research-canvas/releases/download/v0.33.0/zotero-canvas-0.33.0.xpi",
+          "update_hash": "sha256:930b186f1a9dc4eae9d0ea745ad2faced21e9f24800ec9cfba7ccd2bdae34c47",
           "applications": {
             "zotero": {
               "strict_min_version": "10.0",

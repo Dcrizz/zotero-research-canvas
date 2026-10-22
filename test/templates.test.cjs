@@ -32,6 +32,13 @@ test('editing a saved template retains its ID without carrying edit state into n
   const template=T.capture(M,board,'Updated name',board.templateSourceID);assert.equal(template.id,'saved-template');assert.equal(template.board.templateSourceID,undefined);
   const next=T.instantiate(M,template,'New canvas');assert.equal(next.templateSourceID,undefined);assert.equal(next.templateDraft,true);
 });
+test('format defaults keep edited content and layout, reset preserves named templates and invalidates old editors',()=>{
+  const board=T.builtIn(M,'conceptmap','Concept Map template');board.templateDefaultMode='conceptmap';board.templateDefaultRevision=0;board.nodes[0].layoutOverrides.conceptmap={x:170,y:80};
+  const named=T.capture(M,T.builtIn(M,'matrix','Matrix'),'My matrix'),library={...T.empty(),custom:[named]};
+  const saved=T.saveDefault(M,library,'conceptmap',board,0);assert.equal(saved.custom.length,1);assert.equal(saved.defaults.conceptmap,'builtin');assert.equal(saved.builtinOverrides.conceptmap.templateDefaultMode,undefined);
+  const next=T.defaultBoard(M,saved,'conceptmap','Fresh');assert.deepEqual(next.nodes[0].layoutOverrides.conceptmap,{x:170,y:80});assert.notEqual(next.nodes[0].id,board.nodes[0].id);
+  const reset=T.resetDefaults(M,saved);assert.deepEqual(reset.builtinOverrides,{});assert.deepEqual(reset.defaults,{});assert.equal(reset.custom[0].id,named.id);assert.equal(reset.defaultRevision,1);assert.throws(()=>T.saveDefault(M,reset,'conceptmap',board,0),/restored/);
+});
 test('AI filling replaces instructions only when exact excerpts verify and preserves source links',()=>{
   const board=T.builtIn(M,'conceptmap','Concept'),before=M.clone(board),root=board.nodes[0],alternative=board.nodes.find(n=>n.title==='Alternative view');
   root.text='Define the concept, then include an Alternative view when a competing theory is stated.';
@@ -93,4 +100,14 @@ test('conditional cards omit unsupported branches and save an explainable report
   });
   assert.equal(checked.omissions.length,1);const filled=T.fill(M,board,checked);assert.equal(filled.templateOmissions.length,1);assert.equal(filled.templateOmissions[0].title,'2. Alternative view');assert.ok(!filled.nodes.some(n=>n.title==='2. Alternative view'));
   assert.deepEqual(M.validate(filled),filled);
+});
+
+test('freeform and mind-map custom instruction canvases work independently of format defaults',async()=>{
+  for(const mode of ['canvas','mindmap']){
+    const board=M.board('My custom layout');board.mode=mode;const node=M.node(130,210);node.title='1. Definition';node.text='Explain the concept using an exact excerpt.';board.nodes.push(node);
+    const template=T.capture(M,board,'Independent '+mode),library=T.validateLibrary(M,{...T.empty(),custom:[template]});assert.equal(board.templateDraft,undefined);assert.equal(template.board.templateDraft,true);assert.deepEqual(library.defaults,{});
+    const draft=T.instantiate(M,template,'Filled layout'),checked=await T.run(draft,sources,'',async request=>{const payload=JSON.parse(request.messages[0].content);return JSON.stringify({entries:payload.slots.map(slot=>({task:slot.id,source:'s0',passage:'p1',quote:sources[0].passages[0].text,text:'Source-grounded definition.'}))});});
+    const filled=T.fill(M,draft,checked);assert.equal(filled.mode,mode);assert.equal(filled.nodes[0].link.key,'ABCDEFGH');assert.equal(filled.templateDraft,false);assert.deepEqual(T.resetDefaults(M,library).custom,library.custom);
+    assert.throws(()=>T.validateLibrary(M,{...library,defaults:{[mode]:template.id}}),/unavailable/);
+  }
 });
