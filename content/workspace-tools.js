@@ -22,7 +22,7 @@ window.CanvasWorkspace = function (ctx) {
     return getBoard().nodes.filter(n => n.x >= frame.x && n.y >= frame.y && n.x + n.width <= frame.x + frame.width && n.y + n.height <= frame.y + frame.height);
   }
   function frameRect(frame) {
-    if (getBoard().mode !== 'mindmap') return frame;
+    if (getBoard().mode === 'canvas') return frame;
     const nodes = getBoard().nodes.filter(n => frame.members.includes(n.id)), ps = M.positions(getBoard());
     return nodes.length ? M.bounds(nodes.map(n => ({...n, ...ps.get(n.id)})), 40) : frame;
   }

@@ -20,7 +20,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     for(const edge of board.edges.slice(0,180)){
       if(!map.has(edge.source)||!map.has(edge.target))continue;
       const a=M.endpoint(edge,'source',map),b=M.endpoint(edge,'target',map);
-      image.append(svg('path',{d:M.path(a,b,edge.style,edge.sourceSide,edge.targetSide,edge.routePoints),stroke:edge.colour||'#6a8b82','stroke-width':Math.max(2,edge.thickness||2),fill:'none'}));
+      image.append(svg('path',{d:M.edgePath(board,edge,a,b),stroke:edge.colour||'#6a8b82','stroke-width':Math.max(2,edge.thickness||2),fill:'none'}));
     }
     for(const n of nodes){
       image.append(svg('rect',{x:n.x,y:n.y,width:n.width,height:n.height,rx:n.shape==='rectangle'?3:10,fill:n.colour||'#fff9e8',stroke:n.border||'#a68b54','stroke-width':Math.max(1,n.borderWidth||1)}));
@@ -44,7 +44,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     const button=document.createElement('button');button.type='button';button.className='canvas-tile';button.title='Open '+row.title;
     button.append(preview(board));const info=document.createElement('div');info.className='tile-info';const name=document.createElement('strong');name.textContent=row.title;
     const detail=document.createElement('small');const date=Number(row.modified)?new Date(row.modified).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'Saved locally';
-    detail.textContent=(board.mode==='mindmap'?'Mind map':'Freeform')+' · '+date+' · '+board.nodes.length+' card'+(board.nodes.length===1?'':'s');
+    detail.textContent=(CanvasFormats.modes[board.mode]||'Canvas')+' · '+date+' · '+board.nodes.length+' card'+(board.nodes.length===1?'':'s');
     info.append(name,detail);button.append(info);button.onclick=act(()=>bridge.dashboardOpenBoard(row.id));return button;
   }
   async function renderCanvases(){
@@ -68,9 +68,10 @@ window.addEventListener('DOMContentLoaded',()=>{
     if(folderID&&!library.folders.some(f=>f.id===folderID))folderID=null;
     $('library-count').textContent=rows.length+' canvas'+(rows.length===1?'':'es')+' · '+library.folders.length+' folder'+(library.folders.length===1?'':'s');render();
   }
-  function openDialog(kind){dialogKind=kind;$('dialog-title').textContent=kind==='folder'?'New folder':kind==='mindmap'?'New mind map':'New freeform canvas';$('new-name').value='';$('dialog-shade').hidden=false;$('new-name').focus();}
+  function openDialog(kind){dialogKind=kind;$('dialog-title').textContent=kind==='folder'?'New folder':'New '+CanvasFormats.modes[kind].toLowerCase();$('new-name').value='';$('dialog-shade').hidden=false;$('new-name').focus();}
   function closeDialog(){$('dialog-shade').hidden=true;dialogKind=null;}
   $('new-freeform').onclick=()=>openDialog('canvas');$('new-mindmap').onclick=()=>openDialog('mindmap');$('new-folder').onclick=()=>openDialog('folder');
+  for(const button of document.querySelectorAll('[data-create-mode]'))button.onclick=()=>openDialog(button.dataset.createMode);
   $('cancel-dialog').onclick=closeDialog;
   $('dialog-shade').onclick=event=>{if(event.target===$('dialog-shade'))closeDialog();};
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('dialog-shade').hidden)closeDialog();});

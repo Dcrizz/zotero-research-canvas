@@ -15,10 +15,11 @@ const {chromium}=require('playwright'),http=require('node:http'),fs=require('nod
     await page.goto('http://127.0.0.1:'+server.address().port+'/dashboard.xhtml');
     await page.locator('.canvas-tile').first().waitFor();assert.equal(await page.locator('.canvas-tile').count(),2);assert.equal(await page.locator('.tile-preview svg').count(),1);
     await page.screenshot({path:path.resolve(__dirname,'../docs/images/dashboard.png')});
-    assert.equal(await page.locator('.group-title').count(),2);await page.getByRole('button',{name:/Evidence map/}).click();assert.deepEqual(await page.evaluate(()=>testDashboard.opened),['board-a']);
+    assert.equal(await page.locator('.group-title').count(),2);await page.locator('.canvas-tile').first().click();assert.deepEqual(await page.evaluate(()=>testDashboard.opened),['board-a']);
     await page.getByRole('button',{name:/Theory/}).click();assert.equal(await page.locator('.canvas-tile').count(),1);
     await page.locator('#new-mindmap').click();await page.locator('#new-name').fill('New argument');await page.locator('#confirm-dialog').click();
     await page.getByRole('button',{name:/New argument/}).waitFor();assert.equal((await page.evaluate(()=>testDashboard.boards.at(-1))).mode,'mindmap');
+    await page.locator('[data-create-mode=evidence]').click();await page.locator('#new-name').fill('New evidence');await page.locator('#confirm-dialog').click();assert.equal((await page.evaluate(()=>testDashboard.boards.at(-1))).mode,'evidence');
     await page.locator('#new-folder').click();await page.locator('#new-name').fill('Subtopic');await page.locator('#confirm-dialog').click();await page.getByRole('button',{name:/Subtopic/}).waitFor();
     await page.locator('#all-canvases').click();await page.locator('#list-view').click();assert.equal(await page.locator('#canvases.list').count(),1);
     await page.locator('#search').fill('reading');assert.equal(await page.locator('.canvas-tile').count(),1);assert.deepEqual(errors,[]);

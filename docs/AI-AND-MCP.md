@@ -2,7 +2,7 @@
 
 Zotero Canvas has two independent optional integrations:
 
-1. A text model for connection suggestions and review of supporting or critical evidence. Choose **Awesome GPT** or **Own API key** under **Zotero Settings → Zotero Canvas → AI access**.
+1. A text model for connection suggestions, source-grounded comparison/concept canvases, and review of supporting or critical evidence. Choose **Awesome GPT** or **Own API key** under **Zotero Settings → Zotero Canvas → AI access**.
 2. The [Zotero MCP Plugin](https://github.com/cookjohn/zotero-mcp) semantic index for concept-based canvas search and finding library notes/annotations. This is the Zotero MCP Plugin, not the MCP Bridge for Zotero used for debugging.
 
 When Awesome GPT is installed with a configured model, Zotero Canvas uses its model and credentials automatically under the default provider setting. When the Zotero MCP Plugin has semantic search enabled and an index built, Zotero Canvas uses that index automatically. Neither integration needs a second API key entered in Zotero Canvas. If Awesome GPT is absent, select **Own API key** and configure a compatible provider below. This replaces the text-model connection only: Counter, Supporting and Semantic search still require the Zotero MCP Plugin's index.
@@ -13,7 +13,7 @@ When Awesome GPT is installed with a configured model, Zotero Canvas uses its mo
 
 **Own API key:** Choose Own API key, enter the model ID and an HTTPS Chat Completions URL, then click **Save settings**. Enter your key and click **Save API key** separately. The default endpoint is `https://api.openai.com/v1/chat/completions`. Other providers must support a compatible `model` + `messages` request and a `choices[0].message.content` response. A successful model choice and key are both required. The key is stored through Zotero's password manager and can be removed in the same settings pane; it is never written to a canvas, settings JSON or exported archive. Changing the provider does not delete a saved key. Configure the endpoint only for a service you trust with the selected source excerpts.
 
-No model request is made until you choose an AI action. Generation proposes results; accepting a result is a separate step. For Connection suggestions, at most 30 cards and 4,000 normalised text characters per card are submitted. Counter/Supporting searches send the chosen card and at most 30 retrieved passages of up to 2,400 characters each. The model's explanations still need human checking.
+No model request is made until you choose an AI action. Connections, Counter and Supporting propose results for individual acceptance. Source comparison and concept actions create editable draft canvases after checking every generated quote against the supplied passage. For Connection suggestions, at most 30 cards and 4,000 normalised text characters per card are submitted. Counter/Supporting searches send the chosen card and at most 30 retrieved passages of up to 2,400 characters each. Source canvases send bounded saved-note, annotation and indexed-PDF excerpts; they do not send complete PDFs, and indexed PDF excerpts cannot reliably identify a page. Source canvases use the text model but do not require the Zotero MCP Plugin's semantic index. The model's explanations still need human checking.
 
 ## Configure semantic search
 

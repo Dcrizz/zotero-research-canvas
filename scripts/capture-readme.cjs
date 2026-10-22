@@ -6,7 +6,7 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '../content');
 const destination = path.resolve(__dirname, '../docs/images');
-const allowed = new Set(['canvas.xhtml', 'canvas.css', 'choices.js', 'choices.css', 'canvas.js', 'objects.js', 'object-presets.js', 'objects-ui.js', 'model.js', 'workspace-tools.js', 'export.js', 'library.js', 'explorer.js', 'settings.js', 'obsidian.js', 'connections.js', 'connection-ui.js', 'counterexamples.js', 'counterexample-ui.js', 'canvas-entry.png', 'icon.png']);
+const allowed = new Set(['canvas.xhtml', 'canvas.css', 'choices.js', 'choices.css', 'canvas.js', 'objects.js', 'object-presets.js', 'objects-ui.js', 'formats.js', 'model.js', 'workspace-tools.js', 'export.js', 'library.js', 'explorer.js', 'settings.js', 'obsidian.js', 'connections.js', 'connection-ui.js', 'counterexamples.js', 'counterexample-ui.js', 'canvas-entry.png', 'icon.png']);
 
 (async () => {
   fs.mkdirSync(destination, { recursive: true });

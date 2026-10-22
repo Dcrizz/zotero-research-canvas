@@ -6,7 +6,7 @@ Zotero Canvas is a Zotero 10 plugin for arranging notes, annotations, references
 
 ![Zotero Canvas dashboard with recent canvases and creation actions](docs/images/dashboard.png)
 
-*Create a freeform canvas, mind map or folder, then reopen recent work from its preview.*
+*Create a freeform canvas, mind map, structured view or folder, then reopen recent work from its preview.*
 
 ![Sample Zotero Canvas with cards, a frame, links and Canvas Explorer](docs/images/canvas-overview.png)
 
@@ -29,6 +29,7 @@ The tested version is Zotero 10.0.6 on macOS. Other Zotero 10.0 builds and opera
 - Drag Zotero notes, annotations or references onto a canvas, or use the search bar. A card's source action opens the original item; annotation cards can jump to their saved PDF highlight.
 - Right-click blank space to add a card or frame. Use the left object toolbar for shapes, sticky notes, text, tables, wireframes, templates, images, files and [Excalidraw library](https://libraries.excalidraw.com/) imports. Click the active icon again to close its palette.
 - Drag a card port onto another card to connect them; click a port to create a smaller child card. Edit route points, arrowheads, colour, thickness and labels from the connector controls.
+- Use the format menu to arrange existing cards as an evidence map, comparison matrix, timeline, literature map or process diagram. Mind maps can run horizontally or vertically; parent-child links attach to facing sides and use direct lines. Switching formats keeps source links and freeform positions.
 - Define reusable **Link types** in **Zotero Settings → Zotero Canvas**. Built-ins include green **SL ✅** supporting links and red **❌CL** critical links. Custom types can set a name, displayed label, colour, thickness, pattern, route and arrows.
 - Use the Canvas Explorer to organise canvases in folders, embed one canvas in another, and recover deleted canvases from Trash.
 - Select several cards with Shift-click or the drag selection tool to move, resize, align, colour or delete them together. Undo and local version snapshots help recover changes.
@@ -39,6 +40,8 @@ Embedded images display in the card. PDFs use a scrollable document viewer; DOCX
 
 AI is optional. **Connections** compares selected cards and proposes links with source excerpts. **Counter** and **Supporting** search notes and annotations for challenging or corroborating evidence; you review each result before adding it. Accepted results connect to the original card. Generation alone never changes the canvas.
 
+In Zotero's items list, right-click 2–8 selected regular sources and choose **Compare selected sources on a canvas** to make a draft literature map of arguments, findings and relationships. Right-click one regular source and choose **Explain a concept on a canvas** to name a concept and make a draft mind map of its definition and components. These actions use saved notes and annotations plus bounded excerpts of Zotero's indexed PDF text. If a concept has no relevant notes or annotations, the indexed PDF supplies passages; image-only or unindexed PDFs cannot be read. Every generated card quotes a checked passage and links back to its source; connector explanations retain excerpts from both cards. The model sees selected passages, not complete PDFs, so review the draft against the original works before relying on it.
+
 If Awesome GPT is installed and configured, Zotero Canvas uses its model and credentials automatically with the default **Awesome GPT** setting. If the Zotero MCP Plugin's semantic index is enabled and built, Zotero Canvas uses that index automatically for Semantic search, Counter and Supporting. You do not need to enter either integration's credentials again in Zotero Canvas.
 
 Choose one AI provider in **Zotero Settings → Zotero Canvas**:
@@ -48,7 +51,7 @@ Choose one AI provider in **Zotero Settings → Zotero Canvas**:
 
 Semantic search and the Counter/Supporting library workflows additionally need the [Zotero MCP Plugin by cookjohn](https://github.com/cookjohn/zotero-mcp) with its semantic index enabled and built. An own API key replaces Awesome GPT as the text-model provider; it does not replace the semantic index. Zotero Canvas uses that plugin's in-process `callSemanticSearch` service; it does not require an external MCP client or the separate Zotero debugging bridge. Keyword search and AI Connections work without it. See [AI and MCP setup](docs/AI-AND-MCP.md) for steps, limits and troubleshooting.
 
-AI analyses are text-only and bounded. They send the selected card text and, for library searches, retrieved excerpts to the chosen model. Image pixels and image-only annotations are not analysed. You decide whether to accept each suggestion. The semantic service is an internal integration with the Zotero MCP Plugin and may need updating when that plugin changes.
+AI analyses are text-only and bounded. They send the selected card text and, for library searches or source canvases, selected excerpts to the chosen model. Image pixels and image-only annotations are not analysed. You decide whether to accept Connections, Counter and Supporting suggestions; source canvases are saved as editable drafts after exact-quote checks. The semantic service is an internal integration with the Zotero MCP Plugin and may need updating when that plugin changes.
 
 ## Optional appearance integrations
 

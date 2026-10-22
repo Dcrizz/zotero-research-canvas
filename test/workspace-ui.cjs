@@ -33,7 +33,7 @@ const assert = require('node:assert/strict');
     assert.ok(after.frames[0].x > before.frames[0].x);
     assert.ok(Math.abs(after.nodes[0].x-before.nodes[0].x-(after.frames[0].x-before.frames[0].x))<.01);
     assert.ok(Math.abs((after.nodes[1].x-before.nodes[1].x)-(after.nodes[0].x-before.nodes[0].x))<.01);
-    await page.locator('[data-for=mode] [data-value=mindmap]') .click(); assert.equal((await board()).frames[0].title,'Sampling'); await page.locator('[data-for=mode] [data-value=canvas]') .click();
+    await page.locator('#mode-toggle').click(); await page.locator('[data-for=mode] [data-value=mindmap]').click(); assert.equal((await board()).frames[0].title,'Sampling'); await page.locator('#mode-toggle').click(); await page.locator('[data-for=mode] [data-value=canvas]').click();
     await page.evaluate(() => window.CanvasApp.flush()); await page.reload(); await page.waitForFunction(() => window.CanvasApp?.getBoard());
     assert.equal((await board()).frames[0].title,'Sampling');
     await page.locator('.frame-heading').click({button:'right'}); await page.getByRole('button',{name:'Remove frame (keep cards)',exact:true}).click();

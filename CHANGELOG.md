@@ -1,5 +1,7 @@
 # Changes
 
+- 0.29.0: Adds five structured canvas formats and horizontal/vertical mind-map layouts with direct facing parent-child links. Zotero item-menu actions create excerpt-grounded comparison or concept canvases from selected sources, with links back to notes, annotations and indexed PDFs. Generated interpretations are marked as bounded drafts.
+
 - 0.28.0: Adds a Zotero Canvas dashboard launched from Zotero's right-hand icon rail or Tools menu. Create freeform canvases, mind maps and folders; browse recent canvases with live previews, folder filters, search and grid/list views.
 
 - 0.27.2: Renames the visible plugin to Zotero Canvas while preserving its plugin ID, board storage and saved AI credentials. New Obsidian exports use the new name; existing export bundles remain accepted. Adds sample screenshots and clarifies automatic Awesome GPT/Zotero MCP integrations, the own-key alternative and the separate semantic-index requirement. Panning and zooming retain existing card previews, preventing annotation and embedded-content flicker; annotation previews also stay attached while their cards move. Free connectors default to elbow routing, with larger endpoint/bend hit areas and a live routed line while dragging an endpoint.

@@ -242,7 +242,16 @@ function render() {
   $('world').style.transform = `translate(${board.view.x}px,${board.view.y}px) scale(${board.view.zoom})`;
   $('zoom').textContent = Math.round(board.view.zoom * 100) + '%';
   $('mode').value = board.mode; $('mode')._canvasChoices?.sync(); $('board-title').value = board.title;
+  if($('mode-toggle'))$('mode-toggle').textContent=$('mode').selectedOptions[0].textContent+' ▾';
+  $('mindmap-direction').hidden=board.mode!=='mindmap';
+  for(const button of $('mindmap-direction').querySelectorAll('button'))button.setAttribute('aria-pressed',String(button.dataset.direction===(board.mindmapDirection||'horizontal')));
   $('empty').hidden = !!board.nodes.length || !!board.frames?.length || !!board.edges.length;
+  $('format-guides').replaceChildren();
+  for(const guide of M.formatGuides(board)){
+    const group=svg('g',{class:'format-guide format-'+guide.kind});
+    group.append(svg('rect',{x:guide.x,y:guide.y,width:guide.width,height:guide.height,rx:12}));
+    const title=svg('text',{x:guide.x+17,y:guide.y+31});title.textContent=guide.label;group.append(title);$('format-guides').append(group);
+  }
   const existingCards = new Map([...$('cards').children].map(card => [card.dataset.id, card]));
   const currentIDs = new Set(board.nodes.map(n => n.id));
   for (const [id, card] of existingCards) if (!currentIDs.has(id)) card.remove();
@@ -250,7 +259,7 @@ function render() {
   const nodes = new Map(board.nodes.map(n => [n.id, {...n, ...positions.get(n.id)}]));
   for (const e of board.edges) {
     const a = M.endpoint(e,'source',nodes), c = M.endpoint(e,'target',nodes);
-    const d = M.path(a, c, e.style, e.sourceSide, e.targetSide, e.routePoints);
+    const geometry=M.edgeGeometry(board,e,a,c),d=M.edgePath(board,e,a,c);
     const defs = svg('defs');
     for (const [suffix, direction] of [['end', 'auto'], ['start', 'auto-start-reverse']]) {
       const marker = svg('marker', {id: `arrow-${e.id}-${suffix}`, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: direction});
@@ -272,7 +281,7 @@ function render() {
     if (e.fillMode === 'outline') $('edges').append(svg('path', {d, class: 'edge-line edge-hollow', stroke: '#f0f2ed', 'stroke-width': e.thickness, ...appearance}));
     $('edges').append(hit);
     if (selection?.id === e.id) {
-      for (const [end, node, side] of [['source', a, e.sourceSide || 'right'], ['target', c, e.targetSide || 'left']]) {
+      for (const [end, node, side] of [['source', a, geometry.sourceSide], ['target', c, geometry.targetSide]]) {
         const p = M.anchor(node, side), handle = svg('circle', {cx: p.x, cy: p.y, r: 13/board.view.zoom, class: 'endpoint', 'data-end': end, 'data-filter-edge': e.id, role: 'button', 'aria-label': 'Move connector ' + end});
         handle.addEventListener('pointerdown', ev => {
           if (ev.button !== 0) return; ev.preventDefault(); ev.stopPropagation(); hideStyles(); checkpoint();
@@ -281,7 +290,7 @@ function render() {
         }); $('handles').append(handle,svg('circle',{cx:p.x,cy:p.y,r:5/board.view.zoom,class:'endpoint-visual'}));
       }
     }
-    if(selection?.id===e.id){
+    if(selection?.id===e.id&&board.mode!=='mindmap'){
       const route=e.routePoints?.length?e.routePoints:[.25,.5,.75].map(t=>{const p=line.getPointAtLength(line.getTotalLength()*t);return {x:p.x,y:p.y};});
       const addHandle=(p,index,insert=false)=>{const size=24/board.view.zoom,h=svg('rect',{x:p.x-size/2,y:p.y-size/2,width:size,height:size,rx:2,class:'route-handle',role:'button','aria-label':insert?'Add connector bend':'Move connector bend','data-route-index':index,'data-edge':e.id});
         h.addEventListener('pointerdown',ev=>{if(ev.button!==0)return;ev.preventDefault();ev.stopPropagation();hideStyles();checkpoint();gesture={type:'route',id:e.id,index,route:M.clone(route),insert,point:{...p},start:point(ev),pointer:ev.pointerId};$('viewport').setPointerCapture(ev.pointerId);});
@@ -386,7 +395,7 @@ function render() {
       const open = html('button'); open.className = 'linked open-note'; open.textContent = 'Open in Zotero'; open.setAttribute('role', 'menuitem'); open.addEventListener('click', act(() => { closeMenu(); return bridge.open(n.link); })); menu.append(open); card.append(menu);
       }
     }
-    if (n.link && n.kind !== 'note' && n.kind !== 'annotation') { const link = html('button'); link.className = 'linked'; link.textContent = n.kind === 'annotation' ? 'Open source' : 'Open in Zotero'; link.addEventListener('click', act(() => { if (n.kind !== 'annotation') return bridge.open(n.link); if (!bridge.openSource) throw Error('Open source is available in the installed Zotero plugin.'); return bridge.openSource(n.link, n.annotationKey); })); card.append(link); }
+    if (n.link && n.kind !== 'note' && n.kind !== 'annotation') { const link = html('button'); link.className = 'linked'; link.textContent = n.annotationKey ? 'Open source' : 'Open in Zotero'; link.addEventListener('click', act(() => { if (!n.annotationKey) return bridge.open(n.link); if (!bridge.openSource) throw Error('Open source is available in the installed Zotero plugin.'); return bridge.openSource(n.link, n.annotationKey); })); card.append(link); }
     card.append(...ports, ...handles);
     card.onpointerdown = ev => {
       if(ev.target.closest('.file-preview')){ev.stopPropagation();return;}
@@ -427,6 +436,13 @@ function updateVisualChoices() {
     button.setAttribute('aria-pressed', String(button.dataset.value === current));
   }
 }
+function renderOrganizationPanel(){
+  const panel=$('tools-organize'),n=selected();panel.replaceChildren();if(!n||!M.formatGuides(board).length)return;
+  const title=html('strong');title.textContent='Place in '+$('mode').selectedOptions[0].textContent;panel.append(title);
+  const fields={evidence:[['evidenceRole','Role','select',[['','Automatic'],['claim','Claim'],['support','Supporting'],['critical','Critical'],['unresolved','Unresolved']]]],matrix:[['matrixRow','Source / row','text'],['matrixColumn','Theme / column','text']],timeline:[['timelineDate','Date (YYYY or YYYY-MM-DD)','text']],literature:[['literatureGroup','Concept / group','text']],process:[['processStep','Step number','number']]}[board.mode]||[];
+  for(const [key,name,type,options]of fields){const label=html('label');label.textContent=name;const input=html(type==='select'?'select':'input');if(type==='select')for(const [value,text]of options){const option=html('option');option.value=value;option.textContent=text;input.append(option);}else{input.type=type;input.maxLength=100;if(type==='number'){input.min='1';input.max='5000';}}
+    input.value=n.organization?.[key]??'';input.setAttribute('aria-label',name);input.onchange=()=>{const value=input.value.trim();if(key==='timelineDate'&&value&&!/^\d{4}(?:-\d{2}(?:-\d{2})?)?$/.test(value)){status('Use YYYY, YYYY-MM or YYYY-MM-DD.',true);return;}if(key==='processStep'&&value&&(!Number.isInteger(Number(value))||Number(value)<1||Number(value)>5000)){status('Choose a step from 1 to 5000.',true);return;}checkpoint();n.organization||={};if(value)n.organization[key]=key==='processStep'?Number(value):value;else delete n.organization[key];if(!Object.keys(n.organization).length)delete n.organization;changed();render();fit();};label.append(input);panel.append(label);}
+}
 function openStyles(kind, id, anchor = null) {
   finishLabel();
   select(kind, id); inspector(); styleTarget = {kind, id}; styleAnchor = anchor; activeTool = null;
@@ -435,7 +451,7 @@ function openStyles(kind, id, anchor = null) {
   updateVisualChoices();
   $('style-popover').hidden = true;
   const bar = $('style-toolbar'); bar.replaceChildren();
-  for (const [key, title, path] of [...toolSpecs[kind],...(kind==='node'&&selected().objectType==='table'?[['table','Edit table','M3 4h18v16H3z M3 9h18 M9 4v16 M15 4v16']]:[]),...(kind==='node'&&selected().counterexampleEvidence?[['counterevidence','View source explanation','M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h5']]:[]),...(kind==='edge'&&selected().aiEvidence?[['evidence','View connection explanation','M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h5']]:[]),['delete','Delete selection','M4 6h16 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7']]) {
+  for (const [key, title, path] of [...toolSpecs[kind],...(kind==='node'&&CanvasFormats.structured.has(board.mode)?[['organize','Place in view','M4 5h16 M4 12h16 M4 19h16 M8 3v18']]:[]),...(kind==='node'&&selected().objectType==='table'?[['table','Edit table','M3 4h18v16H3z M3 9h18 M9 4v16 M15 4v16']]:[]),...(kind==='node'&&selected().counterexampleEvidence?[['counterevidence','View source explanation','M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h5']]:[]),...(kind==='edge'&&selected().aiEvidence?[['evidence','View connection explanation','M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h5']]:[]),['delete','Delete selection','M4 6h16 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7']]) {
     const button = html('button'); button.type = 'button'; button.dataset.tool = key;
     button.title = title; button.setAttribute('aria-label', title); button.setAttribute('aria-expanded', 'false');
     if (key === 'fill' || key === 'stroke') button.style.setProperty('--swatch', selected().colour);
@@ -446,7 +462,7 @@ function openStyles(kind, id, anchor = null) {
       if(key==='delete'){act(deleteSelection)();return;}
       if(key==='counterevidence'){workspace.showCounterexampleEvidence(selected());hideStyles();return;}
       if(key==='evidence'){workspace.showConnectionEvidence(selected());hideStyles();return;}
-      activeTool = activeTool === key ? null : key;
+      activeTool = activeTool === key ? null : key;if(activeTool==='organize')renderOrganizationPanel();
       for (const item of bar.children) item.setAttribute('aria-expanded', String(item === button && !!activeTool));
       for (const panel of document.querySelectorAll('.style-options')) panel.hidden = panel.id !== 'tools-' + activeTool;
       $('style-popover').hidden = !activeTool;
@@ -513,7 +529,7 @@ async function refreshCurrentSources() {
         for (const n of snapshot.nodes.filter(n => n.link?.libraryID === item.link.libraryID && n.link.key === item.link.key)) {
           if (item.metadata && JSON.stringify(n.metadata) !== JSON.stringify(item.metadata)) { n.metadata = M.clone(item.metadata); if (snapshot === board) updated = true; }
           if (item.missing) continue; // Keep the last preview when its source is unavailable.
-          if (item.kind === 'note' || n.kind === 'note' || n.kind === undefined) {
+          if (!n.synthesis && (item.kind === 'note' || n.kind === 'note' || n.kind === undefined)) {
             for (const key of ['kind', 'title', 'text']) if (n[key] !== item[key]) { n[key] = item[key]; if (snapshot === board) updated = true; }
           }
         }
@@ -610,7 +626,7 @@ function fit() {
   const headers = new Map([...$('cards').children].map(card => [card.dataset.id, card.querySelector('.note-card-header,.heading')?.getBoundingClientRect().height / board.view.zoom || 0]));
   for (const n of board.nodes) { const p = ps.get(n.id); left = Math.min(left, p.x); top = Math.min(top, p.y - (headers.get(n.id) || 0)); right = Math.max(right, p.x + n.width); bottom = Math.max(bottom, p.y + n.height); }
   for (const f of board.frames || []) { const r = workspace?.frameRect(f) || f; left = Math.min(left, r.x); top = Math.min(top, r.y - 40); right = Math.max(right, r.x + r.width); bottom = Math.max(bottom, r.y + r.height); }
-  for(const r of M.extraRects(board)){left=Math.min(left,r.x);top=Math.min(top,r.y);right=Math.max(right,r.x);bottom=Math.max(bottom,r.y);}
+  for(const r of M.extraRects(board)){left=Math.min(left,r.x);top=Math.min(top,r.y);right=Math.max(right,r.x+(r.width||0));bottom=Math.max(bottom,r.y+(r.height||0));}
   board.view.zoom = Math.max(.2, Math.min(1.5, ($('viewport').clientWidth - 100) / (right - left), ($('viewport').clientHeight - 100) / (bottom - top)));
   board.view.x = 50 - left * board.view.zoom; board.view.y = 50 - top * board.view.zoom;
   changed(); render();
@@ -618,7 +634,7 @@ function fit() {
 function createChild(parent,side='right'){
   const ps=M.positions(board),n=M.child({...parent,...ps.get(parent.id)},side);
   while(board.nodes.some(c=>n.x<c.x+c.width+20&&n.x+n.width+20>c.x&&n.y<c.y+c.height+45&&n.y+n.height+45>c.y))n.y+=n.height+60;
-  const e=M.edge(parent.id,n.id);e.sourceSide=side;e.targetSide={right:'left',left:'right',top:'bottom',bottom:'top'}[side];board.nodes.push(n);board.edges.push(e);changed();select('node',n.id);if(board.mode==='mindmap')fit();return n;
+  const e=M.edge(parent.id,n.id);e.sourceSide=side;e.targetSide={right:'left',left:'right',top:'bottom',bottom:'top'}[side];board.nodes.push(n);board.edges.push(e);changed();select('node',n.id);if(board.mode!=='canvas')fit();return n;
 }
 function addObjects(nodes,edges=[],frames=[]){const next={...board,nodes:[...board.nodes,...nodes],edges:[...board.edges,...edges],frames:[...(board.frames||[]),...frames]};M.validate(next);checkpoint();board.nodes.push(...nodes);board.edges.push(...edges);if(frames.length)(board.frames||=[]).push(...frames);changed();select('node',nodes[0].id);if(nodes.length>1)fit();}
 function addNode(x, y) { checkpoint(); const n = M.node(x, y); board.nodes.push(n); changed(); select('node', n.id); }
@@ -740,7 +756,7 @@ function bind() {
   };
   renderMeanings();
   $('save-meaning').onclick=act(async()=>{const edge=selected();if(!edge||selection.kind!=='edge')return;const preset=M.meaning(crypto.randomUUID(),$('meaning-name').value,edge),next=[...customMeanings.filter(p=>p.title!==preset.title),preset];if(!bridge.saveMeanings)throw Error('Meaning storage is unavailable.');await bridge.saveMeanings(next);customMeanings=next;$('meaning-name').value='';renderMeanings();status('Link type saved');});
-  $('open-link').onclick = act(() => bridge.open(selected().link));
+  $('open-link').onclick = act(() => selected().annotationKey ? bridge.openSource(selected().link,selected().annotationKey) : bridge.open(selected().link));
   $('expand-note').onclick = act(() => expandNote(selected()));
   $('close-note').onclick = act(closeNote);
   $('sync-related').onclick = () => syncRelation(selected());
@@ -755,8 +771,16 @@ function bind() {
     if (!items.length) { status('Select notes or references in the Zotero library first.'); return; }
     addItems(items, (60 - board.view.x) / board.view.zoom, (60 - board.view.y) / board.view.zoom); fit();
   });
-  CanvasChoices.attach($('mode'),{label:'View mode'});
-  $('mode').onchange = () => { checkpoint(); board.mode = $('mode').value; changed(); render(); fit(); };
+  const modeChoices=CanvasChoices.attach($('mode'),{label:'View mode',layout:'list'}),modePicker=html('div'),modeToggle=html('button');
+  modePicker.id='mode-picker';modeToggle.id='mode-toggle';modeToggle.type='button';modeToggle.setAttribute('aria-haspopup','true');modeToggle.setAttribute('aria-expanded','false');modeToggle.setAttribute('aria-label','Choose canvas format');
+  modeChoices.group.replaceWith(modePicker);modePicker.append(modeToggle,modeChoices.group);modeChoices.group.hidden=true;
+  const closeModes=()=>{modeChoices.group.hidden=true;modeToggle.setAttribute('aria-expanded','false');};
+  modeToggle.onclick=()=>{const open=modeChoices.group.hidden;modeChoices.group.hidden=!open;modeToggle.setAttribute('aria-expanded',String(open));if(open)modeChoices.focus();};
+  document.addEventListener('pointerdown',ev=>{if(!modePicker.contains(ev.target))closeModes();});
+  document.addEventListener('keydown',ev=>{if(ev.key==='Escape')closeModes();});
+  $('mode').onchange = () => { closeModes();modeToggle.textContent=$('mode').selectedOptions[0].textContent+' ▾';checkpoint(); board.mode = $('mode').value; changed(); render(); fit(); };
+  for(const button of $('mindmap-direction').querySelectorAll('button'))button.onclick=()=>{if(board.mindmapDirection===button.dataset.direction)return;checkpoint();board.mindmapDirection=button.dataset.direction;changed();render();fit();};
+  modeToggle.textContent=$('mode').selectedOptions[0].textContent+' ▾';
   $('board-title').onchange = () => { checkpoint(); board.title = $('board-title').value || 'Untitled board'; changed(); };
   $('delete').onclick = act(deleteSelection);
   $('undo').onclick = act(() => history('undo')); $('redo').onclick = act(() => history('redo'));
@@ -810,7 +834,7 @@ function bind() {
       const items = await (annotations ? bridge.fromAnnotations(raw) : bridge.fromDrop(raw));
       if (board !== activeBoard) throw Error('The board changed while the drop was loading. Drop the items again.');
       addItems(items, position.x, position.y);
-      if (board.mode === 'mindmap') fit();
+      if (board.mode !== 'canvas') fit();
     })();
   });
   $('viewport').addEventListener('pointerdown', ev => {
@@ -921,7 +945,7 @@ async function drawCanvasPreview(n,body){
   const data=await bridge.load(n.canvasID);if(!body.isConnected)return;const current=board.nodes.find(x=>x.id===n.id&&x.canvasID===n.canvasID);if(current&&current.title!==data.title){current.title=data.title;const heading=body.closest('.card').querySelector('.heading');heading.textContent=data.title;heading.title=data.title;changed();}const signature=JSON.stringify(data);if(body.dataset.canvasSignature===signature)return;body.dataset.canvasSignature=signature;body.replaceChildren();
   const name=html('strong');name.textContent=data.title;body.append(name);if(!n.embedded)return;
   const positions=M.positions(data),bounds=data.nodes.length||data.edges.length?M.bounds([...data.nodes.map(n=>({...n,...positions.get(n.id)})),...M.extraRects(data)]):{x:0,y:0,width:200,height:150},image=svg('svg',{viewBox:`${bounds.x-30} ${bounds.y-40} ${Math.max(200,bounds.width+60)} ${Math.max(150,bounds.height+80)}`,class:'canvas-thumbnail','aria-label':'Preview of '+data.title});
-  for(const edge of data.edges){const map=new Map(data.nodes.map(n=>[n.id,{...n,...positions.get(n.id)}]));const a=M.endpoint(edge,'source',map),b=M.endpoint(edge,'target',map);image.append(svg('path',{d:M.path(a,b,edge.style,edge.sourceSide,edge.targetSide,edge.routePoints),fill:'none',stroke:edge.colour,'stroke-width':edge.thickness}));}
+  for(const edge of data.edges){const map=new Map(data.nodes.map(n=>[n.id,{...n,...positions.get(n.id)}]));const a=M.endpoint(edge,'source',map),b=M.endpoint(edge,'target',map);image.append(svg('path',{d:M.edgePath(data,edge,a,b),fill:'none',stroke:edge.colour,'stroke-width':edge.thickness}));}
   for(const node of data.nodes){const pos=positions.get(node.id);if(node.objectType){image.append(svg('image',{x:pos.x,y:pos.y,width:node.width,height:node.height,href:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(CanvasObjects.svg(node))}));continue;}image.append(svg('rect',{x:pos.x,y:pos.y,width:node.width,height:node.height,rx:8,fill:node.colour,stroke:node.border,'stroke-width':2}));const text=svg('text',{x:pos.x+10,y:pos.y+25,fill:'#253d3b','font-size':16});text.textContent=node.title.slice(0,60);image.append(text);}
   body.append(image);if(!data.nodes.length){const p=html('p');p.textContent='Empty canvas';body.append(p);}
 }

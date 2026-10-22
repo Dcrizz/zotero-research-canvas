@@ -8,7 +8,7 @@ async function openText(page){if(await page.locator('#tools-text').isVisible())r
 (async () => {
   const server = http.createServer((req, res) => {
     const name = req.url.split('?')[0] === '/' ? 'canvas.xhtml' : req.url.split('?')[0].slice(1);
-    if (!['canvas.xhtml', 'canvas.css', 'choices.js', 'choices.css', 'canvas.js', 'objects.js', 'object-presets.js', 'objects-ui.js', 'model.js', 'workspace-tools.js', 'export.js', 'library.js', 'explorer.js', 'settings.js', 'obsidian.js', 'connections.js', 'connection-ui.js', 'counterexamples.js', 'counterexample-ui.js', 'canvas-entry.png', 'icon.png'].includes(name)) { res.writeHead(404).end(); return; }
+    if (!['canvas.xhtml', 'canvas.css', 'choices.js', 'choices.css', 'canvas.js', 'objects.js', 'object-presets.js', 'objects-ui.js', 'formats.js', 'model.js', 'workspace-tools.js', 'export.js', 'library.js', 'explorer.js', 'settings.js', 'obsidian.js', 'connections.js', 'connection-ui.js', 'counterexamples.js', 'counterexample-ui.js', 'canvas-entry.png', 'icon.png'].includes(name)) { res.writeHead(404).end(); return; }
     res.setHeader('Content-Type', name.endsWith('.xhtml') ? 'application/xhtml+xml' : name.endsWith('.css') ? 'text/css' : name.endsWith('.png') ? 'image/png' : 'text/javascript');
     res.end(fs.readFileSync(path.join(root, name)));
   }).listen(0, '127.0.0.1');
@@ -71,7 +71,7 @@ async function openText(page){if(await page.locator('#tools-text').isVisible())r
       await page.locator('#undo').click();
     }
     const freeform = structuredClone(b.nodes);
-    await page.locator('[data-for=mode] [data-value=mindmap]') .click(); await page.locator('[data-for=mode] [data-value=canvas]') .click();
+    await page.locator('#mode-toggle').click(); await page.locator('[data-for=mode] [data-value=mindmap]').click(); await page.locator('#mode-toggle').click(); await page.locator('[data-for=mode] [data-value=canvas]').click();
     b = await get(); assert.deepEqual(b.nodes, freeform); assert.equal(b.edges.length, 1);
     await page.locator('#fit').click();
     // Drag a second connector from the source port to target card.
@@ -79,10 +79,12 @@ async function openText(page){if(await page.locator('#tools-text').isVisible())r
     const target = await page.locator('.card').nth(1).locator('.heading').boundingBox();
     await page.mouse.move(port.x + 9, port.y + 9); await page.mouse.down(); await page.mouse.move(target.x + 40, target.y + 15, {steps: 10}); await page.mouse.up();
     assert.equal((await get()).edges.length, 2);
-    await page.locator('[data-for=mode] [data-value=mindmap]') .click();
+    await page.locator('#mode-toggle').click(); await page.locator('[data-for=mode] [data-value=mindmap]').click();
+    assert.ok((await page.locator('.edge-main').first().getAttribute('d')).includes(' L '));
+    await page.locator('#mode-toggle').click(); await page.locator('[data-for=mode] [data-value=canvas]').click();
     // Select an edge at a point on the SVG path and format it.
     const edgePoint = await page.locator('.edge-hit').first().evaluate(el => { const p = el.getPointAtLength(el.getTotalLength() * .5), m = el.getScreenCTM(); return {x: p.x * m.a + m.e, y: p.y * m.d + m.f}; });
-    await page.mouse.click(edgePoint.x, edgePoint.y, {button: 'right'});
+    await page.locator('.edge-hit').first().dispatchEvent('contextmenu',{clientX:edgePoint.x,clientY:edgePoint.y});
     await page.locator('[data-tool="route"]').click();
     await page.locator('[data-route=elbow]').click();
     await page.locator('[data-tool="arrows"]').click(); await page.locator('[data-field=arrow][data-value=both]').click();
@@ -161,7 +163,7 @@ async function openText(page){if(await page.locator('#tools-text').isVisible())r
     assert.equal(await page.locator('.card img').count(), 0);
     await openText(page); await page.locator('#text').fill('Compare how sources frame the question.'); await page.locator('#text').press('Tab'); await page.keyboard.press('Escape');
     await page.locator('.heading').nth(1).click(); await openText(page); await page.locator('#text').fill('Keep the claim connected to its evidence.'); await page.locator('#text').press('Tab'); await page.keyboard.press('Escape');
-    await page.locator('[data-for=mode] [data-value=mindmap]') .click(); await page.locator('#fit').click();
+    await page.locator('#mode-toggle').click(); await page.locator('[data-for=mode] [data-value=mindmap]').click(); await page.locator('#fit').click();
     await page.evaluate(() => window.CanvasApp.flush());
     await page.screenshot({path: path.resolve(__dirname, '../../research-canvas-preview.png')});
     // Failed writes remain visible and retryable, rather than reporting success.
@@ -235,7 +237,7 @@ async function openText(page){if(await page.locator('#tools-text').isVisible())r
     await dropPage.evaluate(() => { window.dropNote.text = 'Updated in main Zotero'; window.sourceChanged(); });
     await dropPage.waitForFunction(() => window.CanvasApp.getBoard().nodes[0].text === 'Updated in main Zotero');
     const droppedBeforeMode = await dropPage.evaluate(() => window.CanvasApp.getBoard().nodes);
-    await dropPage.locator('[data-for=mode] [data-value=mindmap]') .click(); await dropPage.locator('[data-for=mode] [data-value=canvas]') .click();
+    await dropPage.locator('#mode-toggle').click(); await dropPage.locator('[data-for=mode] [data-value=mindmap]').click(); await dropPage.locator('#mode-toggle').click(); await dropPage.locator('[data-for=mode] [data-value=canvas]').click();
     assert.deepEqual(await dropPage.evaluate(() => window.CanvasApp.getBoard().nodes), droppedBeforeMode);
     await dropPage.evaluate(() => {
       const data = new DataTransfer(); data.setData('zotero/item', 'bad payload');

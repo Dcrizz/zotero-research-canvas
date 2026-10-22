@@ -1,0 +1,22 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const S=require('../content/synthesis.js');
+const M=require('../content/model.js');
+const sources=[
+  {id:'s0',title:'Platform study',author:'Jones',year:'2023',passages:[{id:'p1',origin:'PDF annotation',text:'The recommendation algorithm amplified sensational videos during the observation period.',link:{libraryID:1,key:'ABCDEFGH'},annotationKey:'IJKLMNOP'}]},
+  {id:'s1',title:'Audience study',author:'Smith',year:'2024',passages:[{id:'p1',origin:'Saved note',text:'Interviewees described actively rejecting many recommended sensational videos.',link:{libraryID:1,key:'QRSTUVWX'}}]}
+];
+test('source synthesis verifies exact quotes and builds linked comparison cards',()=>{
+  const data={claims:[{id:'c1',source:'s0',passage:'p1',quote:sources[0].passages[0].text,title:'Algorithm amplifies sensational content',interpretation:'A reported finding in this period.'},{id:'c2',source:'s1',passage:'p1',quote:sources[1].passages[0].text,title:'Audience responses varied',interpretation:'A reported interview finding.'}],relations:[{from:'c2',to:'c1',type:'Qualifies',reason:'Audience rejection limits a deterministic reading of recommendations.'}]};
+  assert.equal(S.prompt(sources,'comparison').tools.length,0);
+  const verified=S.verify(JSON.stringify(data),sources,'comparison');const board=S.build(M,verified,'comparison','Comparison','fixture');
+  assert.equal(board.mode,'literature');assert.equal(board.nodes.length,2);assert.equal(board.edges.length,1);assert.equal(board.nodes[0].annotationKey,'IJKLMNOP');assert.equal(board.edges[0].label,'Qualifies');assert.deepEqual(M.validate(board),board);
+  data.claims[1].quote='A fabricated observation.';assert.equal(S.verify(JSON.stringify(data),sources,'comparison').rejected,2);
+});
+test('concept canvases require verified source passages and produce a directional mind map',()=>{
+  const input=[{...sources[0],passages:[{...sources[0].passages[0],text:'The algorithmic feedback loop is a repeated interaction between recommendations and audience responses.'},{id:'p2',origin:'Indexed PDF text (page unavailable)',text:'Repeated recommendations shape which videos users encounter during later sessions.',link:{libraryID:1,key:'ABCDEFGH'}}]}];
+  const data={claims:[{id:'c1',source:'s0',passage:'p1',quote:input[0].passages[0].text,title:'Algorithmic feedback loop',interpretation:'A working definition from the source.'},{id:'c2',source:'s0',passage:'p2',quote:input[0].passages[1].text,title:'Later recommendations',interpretation:'A component of the loop.'}],relations:[]};
+  const board=S.build(M,S.verify(JSON.stringify(data),input,'concept'),'concept','Algorithmic feedback loop','fixture');
+  assert.equal(board.mode,'mindmap');assert.equal(board.edges.length,1);assert.equal(board.edges[0].hierarchy,true);assert.deepEqual(M.validate(board),board);
+  assert.throws(()=>S.verify(JSON.stringify({...data,claims:data.claims.slice(0,1)}),input,'concept'));
+});

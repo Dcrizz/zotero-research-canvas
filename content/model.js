@@ -1,6 +1,7 @@
 (function (root) {
   'use strict';
   const O=root.CanvasObjects||(typeof require==='function'?require('./objects.js'):null);
+  const F=root.CanvasFormats||(typeof require==='function'?require('./formats.js'):null);
   const clone = value => JSON.parse(JSON.stringify(value));
   let appearanceDefaults=null;
   function setDefaults(value){appearanceDefaults=root.CanvasSettings.validate(value);}
@@ -17,10 +18,11 @@
     return {id: id(), source, target, style: 'curved', colour: '#697b7a', thickness: 2, arrow: 'end', label: '', hierarchy: true};
   }
   function validate(b) {
-    if (!b || b.version !== 1 || typeof b.id !== 'string' || typeof b.title !== 'string' || !['canvas', 'mindmap'].includes(b.mode)
+    if (!b || b.version !== 1 || typeof b.id !== 'string' || typeof b.title !== 'string' || !Object.hasOwn(F.modes,b.mode)
       || !Array.isArray(b.nodes) || !Array.isArray(b.edges) || b.nodes.length > 5000 || b.edges.length > 20000
       || !b.view || !finite(b.view.x, -1e7, 1e7) || !finite(b.view.y, -1e7, 1e7) || !finite(b.view.zoom, .2, 3)) throw Error('Invalid board format or unsupported version.');
     if(b.appearance!==undefined&&(!b.appearance||!colour(b.appearance.background)||!colour(b.appearance.gridColour)||!finite(b.appearance.gridSize,8,100)||typeof b.appearance.showGrid!=='boolean'))throw Error('Invalid canvas appearance.');
+    if(b.mindmapDirection!==undefined&&!['horizontal','vertical'].includes(b.mindmapDirection))throw Error('Invalid mind map direction.');
     if (b.filters !== undefined && (!b.filters || ['tag','author','year','itemType','colourFamily'].some(k => typeof b.filters[k] !== 'string') || !['dim','hide'].includes(b.filters.mode))) throw Error('Invalid filters.');
     const ids = new Set();
     for (const n of b.nodes) {
@@ -32,12 +34,21 @@
         || (n.kind === 'annotation' && (typeof n.annotationHTML !== 'string' || n.annotationHTML.length > 50000000 || !n.link))
         || (n.annotationKey !== undefined && !/^[A-Z0-9]{8}$/.test(n.annotationKey))
         || (n.sourceUnavailable !== undefined && typeof n.sourceUnavailable !== 'boolean')
+        || (n.synthesis !== undefined && typeof n.synthesis !== 'boolean')
         || (n.pattern !== undefined && !['solid', 'dashed', 'dotted'].includes(n.pattern))
         || (n.fillMode !== undefined && !['filled', 'partial', 'outline'].includes(n.fillMode))
         || (n.kind === 'note' && !n.link)
         || (n.shape !== undefined && !O.shapes.includes(n.shape))
         || (n.link !== null && (!n.link || !Number.isInteger(n.link.libraryID) || n.link.libraryID < 1 || !/^[A-Z0-9]{8}$/.test(n.link.key)))) throw Error('Invalid card data.');
       O.validate(n);
+      if(n.organization!==undefined){
+        const o=n.organization;
+        if(!o||typeof o!=='object'||Array.isArray(o)||Object.keys(o).some(k=>!['evidenceRole','matrixRow','matrixColumn','timelineDate','literatureGroup','processStep'].includes(k))
+          ||o.evidenceRole!==undefined&&!['claim','support','critical','unresolved'].includes(o.evidenceRole)
+          ||['matrixRow','matrixColumn','literatureGroup'].some(k=>o[k]!==undefined&&(typeof o[k]!=='string'||o[k].length>100))
+          ||o.timelineDate!==undefined&&(typeof o.timelineDate!=='string'||!/^(?:\d{4})(?:-\d{2}(?:-\d{2})?)?$/.test(o.timelineDate))
+          ||o.processStep!==undefined&&(!Number.isInteger(o.processStep)||o.processStep<1||o.processStep>5000))throw Error('Invalid format placement.');
+      }
       if(n.counterexampleEvidence!==undefined){const e=n.counterexampleEvidence;if(!e||(e.purpose!==undefined&&!['counterexample','support'].includes(e.purpose))||!(e.purpose==='support'?['Supports','Corroborates','Supporting example']:['Contradicts','Qualifies','Counterexample','Alternative interpretation']).includes(e.type)||['selectedCardID','selectedTitle','selectedExcerpt','candidateExcerpt','reason','model','generatedAt','selectedSignature','candidateSignature'].some(k=>typeof e[k]!=='string'||e[k].length>1800)||!Number.isFinite(Date.parse(e.generatedAt)))throw Error('Invalid counterexample evidence.');}
       if ((n.annotationColour !== undefined && !colour(n.annotationColour)) || (n.annotationColourName !== undefined && typeof n.annotationColourName !== 'string')) throw Error('Invalid annotation colour.');
       if (n.metadata !== undefined && (!n.metadata || !Array.isArray(n.metadata.tags) || n.metadata.tags.some(t => typeof t !== 'string') || ['author','year','itemType'].some(k => typeof n.metadata[k] !== 'string'))) throw Error('Invalid source metadata.');
@@ -72,6 +83,8 @@
   }
   // First incoming hierarchy edge owns placement. Cross-links and cycles remain intact.
   function layout(b) {
+    const vertical=b.mindmapDirection==='vertical';
+    const primary=n=>vertical?n.height:n.width,secondary=n=>vertical?n.width:n.height;
     const children = new Map(b.nodes.map(n => [n.id, []]));
     const parent = new Set();
     for (const e of b.edges) if (e.hierarchy && children.has(e.source) && children.has(e.target) && !parent.has(e.target)) {
@@ -88,7 +101,7 @@
         const [key, depth, ancestor] = stack.pop(); if (seen.has(key)) continue;
         seen.add(key); levels.set(key, depth); order.push(key);
         if (ancestor) tree.get(ancestor).push(key);
-        widths[depth] = Math.max(widths[depth] || 0, nodes.get(key).width);
+        widths[depth] = Math.max(widths[depth] || 0, primary(nodes.get(key)));
         for (const child of [...children.get(key)].reverse()) stack.push([child, depth + 1, key]);
       }
     }
@@ -98,23 +111,25 @@
     const spans = new Map();
     for (const key of [...order].reverse()) {
       const kids = tree.get(key);
-      spans.set(key, Math.max(nodes.get(key).height, kids.reduce((sum, child) => sum + spans.get(child), 0) + Math.max(0, kids.length - 1) * 35));
+      spans.set(key, Math.max(secondary(nodes.get(key)), kids.reduce((sum, child) => sum + spans.get(child), 0) + Math.max(0, kids.length - 1) * 35));
     }
     const result = new Map(); let y = 0;
     const stack = [];
     for (const key of roots) { stack.push([key, y]); y += spans.get(key) + 80; }
     while (stack.length) {
       const [key, top] = stack.pop();
-      result.set(key, {x: columns[levels.get(key)], y: top + (spans.get(key) - nodes.get(key).height) / 2});
+      const cross=top+(spans.get(key)-secondary(nodes.get(key)))/2;
+      result.set(key, vertical?{x:cross,y:columns[levels.get(key)]}:{x:columns[levels.get(key)],y:cross});
       let childTop = top;
       for (const child of tree.get(key)) { stack.push([child, childTop]); childTop += spans.get(child) + 35; }
     }
     return result;
   }
-  function positions(b) { return b.mode === 'mindmap' ? layout(b) : new Map(b.nodes.map(n => [n.id, {x: n.x, y: n.y}])); }
+  function positions(b) { return b.mode === 'mindmap' ? layout(b) : F.structured.has(b.mode) ? F.layout(b).positions : new Map(b.nodes.map(n => [n.id, {x: n.x, y: n.y}])); }
+  function formatGuides(b){return F.structured.has(b.mode)?F.layout(b).guides:[];}
   const validPoint = p => p && finite(p.x,-1e7,1e7) && finite(p.y,-1e7,1e7);
   function endpoint(e,end,nodes){return e[end]===null?{...e[end+'Point'],width:0,height:0}:nodes.get(e[end]);}
-  function extraRects(b){return b.edges.flatMap(e=>[...(e.routePoints||[]),...(e.source===null?[e.sourcePoint]:[]),...(e.target===null?[e.targetPoint]:[])]).map(p=>({...p,width:0,height:0}));}
+  function extraRects(b){return [...b.edges.flatMap(e=>[...(e.routePoints||[]),...(e.source===null?[e.sourcePoint]:[]),...(e.target===null?[e.targetPoint]:[])]).map(p=>({...p,width:0,height:0})),...formatGuides(b)];}
   function child(parent,side='right'){
     const n=node();for(const key of ['colour','border','borderWidth','fontSize','shape','pattern','fillMode'])if(parent[key]!==undefined)n[key]=parent[key];
     if(parent.objectType&&!['library','file'].includes(parent.objectType)){n.objectType=parent.objectType;if(parent.objectType==='table'){n.objectData={cells:parent.objectData.cells.map(r=>r.map(()=>''))};n.text=O.markdown(n);}if(parent.objectType==='wireframe')n.objectData={variant:parent.objectData.variant};}
@@ -125,6 +140,20 @@
   function anchor(n, side) {
     return {x: n.x + (side === 'left' ? 0 : side === 'right' ? n.width : n.width / 2), y: n.y + (side === 'top' ? 0 : side === 'bottom' ? n.height : n.height / 2)};
   }
+  function edgeGeometry(b,e,a,c){
+    if(b.mode!=='mindmap'||e.source===null||e.target===null)return {style:e.style,sourceSide:e.sourceSide||'right',targetSide:e.targetSide||'left',routePoints:e.routePoints||[]};
+    if(e.hierarchy){
+      const vertical=b.mindmapDirection==='vertical',forward=vertical?a.y<=c.y:a.x<=c.x;
+      return {style:'straight',sourceSide:vertical?(forward?'bottom':'top'):(forward?'right':'left'),targetSide:vertical?(forward?'top':'bottom'):(forward?'left':'right'),routePoints:[]};
+    }
+    const pairs=b.mindmapDirection==='vertical'?[['bottom','top'],['top','bottom'],['right','left'],['left','right']]:[['right','left'],['left','right'],['bottom','top'],['top','bottom']];
+    const [sourceSide,targetSide]=pairs.reduce((best,pair)=>{
+      const p=anchor(a,pair[0]),q=anchor(c,pair[1]),distance=(p.x-q.x)**2+(p.y-q.y)**2;
+      return distance<best.distance?{pair,distance}:best;
+    },{pair:pairs[0],distance:Infinity}).pair;
+    return {style:'straight',sourceSide,targetSide,routePoints:[]};
+  }
+  function edgePath(b,e,a,c){const route=edgeGeometry(b,e,a,c);return path(a,c,route.style,route.sourceSide,route.targetSide,route.routePoints);}
   function path(a, c, style, sourceSide = 'right', targetSide = 'left', routePoints = []) {
     const {x: x1, y: y1} = anchor(a, sourceSide), {x: x2, y: y2} = anchor(c, targetSide);
     if(routePoints.length){
@@ -190,7 +219,7 @@
   function defaultMeanings() {
     return [['supports','Supporting link','SL ✅','#287b63','solid'],['contradicts','Critical link','❌CL','#b34747','dashed'],['extends','Extends','Extends','#4679a3','solid'],['example','Example of','Example of','#967536','dotted']].map(([id,title,label,colour,pattern])=>meaning(id,title,{label,colour,pattern,style:'curved',thickness:3,arrow:'end',hierarchy:false}));
   }
-  const api = {setDefaults, clone, board, node, edge, endpoint, extraRects, child, validate, layout, positions, path, anchor, droppedIDs, labelPalette, resize, bounds, meaning, meaningFields, defaultMeanings, annotationLabel, referenceTitle};
+  const api = {setDefaults, clone, board, node, edge, endpoint, extraRects, formatGuides, child, validate, layout, positions, path, anchor, edgeGeometry, edgePath, droppedIDs, labelPalette, resize, bounds, meaning, meaningFields, defaultMeanings, annotationLabel, referenceTitle};
   if (typeof module !== 'undefined') module.exports = api;
   else root.CanvasModel = api;
 })(globalThis);

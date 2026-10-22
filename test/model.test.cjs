@@ -57,6 +57,17 @@ test('mode switches preserve graph, styles, links and freeform coordinates', () 
   assert.equal(positions.size, 3); assert.ok(positions.get(b.nodes[1].id).x > positions.get(b.nodes[0].id).x);
   b.mode = 'canvas'; assert.deepEqual(b, original); assert.deepEqual(M.validate(JSON.parse(JSON.stringify(b))), original);
 });
+test('mind maps arrange generations horizontally or vertically with facing direct links',()=>{
+  const b=fixture();b.mode='mindmap';
+  const horizontal=M.positions(b),a=b.nodes[0],child=b.nodes[1],edge=b.edges[0];
+  assert.ok(horizontal.get(child.id).x>horizontal.get(a.id).x);
+  assert.deepEqual(M.edgeGeometry(b,edge,{...a,...horizontal.get(a.id)},{...child,...horizontal.get(child.id)}),{style:'straight',sourceSide:'right',targetSide:'left',routePoints:[]});
+  b.mindmapDirection='vertical';const vertical=M.positions(b);
+  assert.ok(vertical.get(child.id).y>vertical.get(a.id).y);
+  assert.deepEqual(M.edgeGeometry(b,edge,{...a,...vertical.get(a.id)},{...child,...vertical.get(child.id)}),{style:'straight',sourceSide:'bottom',targetSide:'top',routePoints:[]});
+  assert.ok(M.edgePath(b,edge,{...a,...vertical.get(a.id)},{...child,...vertical.get(child.id)}).includes(' L '));
+  b.mindmapDirection='diagonal';assert.throws(()=>M.validate(b));
+});
 test('layout handles cycles, multiple parents, cross-links and disconnected nodes without data loss', () => {
   const b = fixture(); b.edges.push(M.edge(b.nodes[1].id, b.nodes[0].id), M.edge(b.nodes[2].id, b.nodes[1].id)); b.nodes.push(M.node());
   const before = M.clone(b); const positions = M.layout(b); assert.equal(positions.size, b.nodes.length); assert.deepEqual(b, before);

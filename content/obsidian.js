@@ -35,7 +35,8 @@
     };
     for(const board of boards){
       const M=root.CanvasModel,positions=M.positions(board),nodes=[],edges=[];
-      for(const f of board.frames||[]){const members=board.nodes.filter(n=>f.members.includes(n.id)).map(n=>({...n,...positions.get(n.id)}));const r=board.mode==='mindmap'&&members.length?M.bounds(members,40):f;nodes.push({id:'frame-'+f.id,type:'group',label:f.title,color:f.colour,x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height)});}
+      for(const f of board.frames||[]){const members=board.nodes.filter(n=>f.members.includes(n.id)).map(n=>({...n,...positions.get(n.id)}));const r=board.mode!=='canvas'&&members.length?M.bounds(members,40):f;nodes.push({id:'frame-'+f.id,type:'group',label:f.title,color:f.colour,x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height)});}
+      M.formatGuides(board).forEach((guide,index)=>nodes.push({id:'format-'+index,type:'group',label:guide.label,color:guide.kind==='critical'?'3':'5',x:Math.round(guide.x),y:Math.round(guide.y),width:Math.round(guide.width),height:Math.round(guide.height)}));
       for(const n of board.nodes){
         const p=positions.get(n.id),out={id:n.id,x:Math.round(p.x),y:Math.round(p.y),width:Math.round(n.width),height:Math.round(n.height),color:n.colour};
         if(n.objectType==='file'){const path=prefix+'/Assets/'+safeName(n.id)+'-'+safeName(n.objectData.name);files.push({path,base64:n.objectData.base64});Object.assign(out,{type:'file',file:path});}else if(n.objectType==='library'||n.objectType==='wireframe'){const path=prefix+'/Assets/'+safeName(n.title)+'-'+safeName(n.id)+'.svg';files.push({path,text:root.CanvasObjects.svg(n)});Object.assign(out,{type:'file',file:path});warnings.add('Wireframes and library objects export as SVG images; edit their components in Zotero Canvas.');}else if(n.objectType==='table'){Object.assign(out,{type:'text',text:'# '+md(n.title)+'\n\n'+root.CanvasObjects.markdown(n)});}else if(n.kind==='canvas'){
@@ -48,7 +49,21 @@
         nodes.push(out);
         if(n.fontSize!==15||n.shape&&n.shape!=='rounded'||n.borderWidth!==2||n.pattern&&n.pattern!=='solid')warnings.add('Custom shapes, borders and font sizes use Obsidian styling.');
       }
-      for(const e of board.edges){const ends={};for(const end of ['source','target']){ends[end]=e[end];if(e[end]===null){const p=e[end+'Point'],id='loose-'+e.id+'-'+end;nodes.push({id,type:'text',text:'',x:Math.round(p.x),y:Math.round(p.y),width:1,height:1});ends[end]=id;warnings.add('Loose connector endpoints use tiny editable anchor cards in Obsidian.');}}edges.push({id:e.id,fromNode:ends.source,fromSide:e.sourceSide||'right',fromEnd:['start','both'].includes(e.arrow)?'arrow':'none',toNode:ends.target,toSide:e.targetSide||'left',toEnd:['end','both'].includes(e.arrow)?'arrow':'none',color:e.colour,label:e.label||''});if(e.routePoints?.length||e.pattern&&e.pattern!=='solid'||e.outlineWidth||e.thickness!==2||e.style!=='curved')warnings.add('Connector labels, colours and endpoints are retained; routing, thickness and dash styles use Obsidian defaults.');}
+      const placed=new Map(board.nodes.map(n=>[n.id,{...n,...positions.get(n.id)}]));
+      for(const e of board.edges){
+        const ends={};
+        for(const end of ['source','target']){
+          ends[end]=e[end];
+          if(e[end]===null){
+            const p=e[end+'Point'],id='loose-'+e.id+'-'+end;
+            nodes.push({id,type:'text',text:'',x:Math.round(p.x),y:Math.round(p.y),width:1,height:1});
+            ends[end]=id;warnings.add('Loose connector endpoints use tiny editable anchor cards in Obsidian.');
+          }
+        }
+        const geometry=M.edgeGeometry(board,e,M.endpoint(e,'source',placed),M.endpoint(e,'target',placed));
+        edges.push({id:e.id,fromNode:ends.source,fromSide:geometry.sourceSide,fromEnd:['start','both'].includes(e.arrow)?'arrow':'none',toNode:ends.target,toSide:geometry.targetSide,toEnd:['end','both'].includes(e.arrow)?'arrow':'none',color:e.colour,label:e.label||''});
+        if(e.routePoints?.length||e.pattern&&e.pattern!=='solid'||e.outlineWidth||e.thickness!==2||e.style!=='curved')warnings.add('Connector labels, colours and endpoints are retained; routing, thickness and dash styles use Obsidian defaults.');
+      }
       files.push({path:paths.get(board.id),text:JSON.stringify({nodes,edges},null,2)});
     }
     files.push({path:prefix+'/Export details.md',text:'# Zotero Canvas export\n\nThis is an editable snapshot. Edits in Obsidian do not sync back to Zotero. Original notes and annotations are linked from each exported note.\n\n'+[...warnings].map(w=>'- '+w).join('\n')+'\n'});

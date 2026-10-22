@@ -22,15 +22,16 @@ window.CanvasExport = (() => {
   function createSVG(board,{frame=null,noteHTML={},visible=()=>true,tagColour=()=>null}={}){
     const positions=M.positions(board),all=board.nodes.map(n=>({...n,...positions.get(n.id)}));
     const nodes=all.filter(n=>visible(n)&&(!frame||(n.x>=frame.x&&n.y>=frame.y&&n.x+n.width<=frame.x+frame.width&&n.y+n.height<=frame.y+frame.height)));
-    const frames=frame?[frame]:(board.frames||[]).map(f=>board.mode==='mindmap'&&f.members.length?{...f,...M.bounds(all.filter(n=>f.members.includes(n.id)),40)}:f);
+    const frames=frame?[frame]:(board.frames||[]).map(f=>board.mode!=='canvas'&&f.members.length?{...f,...M.bounds(all.filter(n=>f.members.includes(n.id)),40)}:f);
     if(!nodes.length&&!frames.length&&!board.edges.some(e=>e.source===null&&e.target===null))throw Error('There are no visible cards or frames to export.');
     const rect=frame?{x:frame.x-25,y:frame.y-65,width:frame.width+50,height:frame.height+90}:M.bounds([...nodes,...frames,...M.extraRects(board)],30);
     const svg=el('svg',{xmlns:ns,width:Math.ceil(rect.width),height:Math.ceil(rect.height),viewBox:[rect.x,rect.y,rect.width,rect.height].join(' ')});
     svg.append(el('title',{},board.title),el('rect',{x:rect.x,y:rect.y,width:rect.width,height:rect.height,fill:'#f0f2ed'}));
+    if(!frame)for(const guide of M.formatGuides(board)){svg.append(el('rect',{x:guide.x,y:guide.y,width:guide.width,height:guide.height,rx:12,fill:guide.kind==='critical'?'#f7ebeb':'#e7eee9','fill-opacity':.7,stroke:'#adc5b9','stroke-dasharray':'7 6'}));svg.append(el('text',{x:guide.x+17,y:guide.y+31,fill:'#42665a','font-size':19,'font-family':'serif','font-weight':600},guide.label));}
     const defs=el('defs');svg.append(defs);
     for(const f of frames){svg.append(el('rect',{x:f.x,y:f.y,width:f.width,height:f.height,rx:10,fill:f.colour,'fill-opacity':.4,stroke:f.border,'stroke-width':2}));svg.append(el('rect',{x:f.x,y:f.y-31,width:Math.min(f.width,Math.max(100,f.title.length*8+25)),height:31,rx:4,fill:f.border}));svg.append(el('text',{x:f.x+10,y:f.y-10,fill:M.labelPalette(f.border).foreground,'font-size':15,'font-family':'sans-serif'},f.title));}
     const byID=new Map(nodes.map(n=>[n.id,n]));
-    for(const edge of board.edges){const a=M.endpoint(edge,'source',byID),b=M.endpoint(edge,'target',byID);if(!a||!b||frame&&[a,b].some(p=>p.width===0&&(p.x<frame.x||p.x>frame.x+frame.width||p.y<frame.y||p.y>frame.y+frame.height)))continue;const d=M.path(a,b,edge.style,edge.sourceSide,edge.targetSide,edge.routePoints),dash=edge.pattern==='dashed'?`${edge.thickness*4} ${edge.thickness*3}`:edge.pattern==='dotted'?`1 ${Math.max(5,edge.thickness*2.5)}`:'none';
+    for(const edge of board.edges){const a=M.endpoint(edge,'source',byID),b=M.endpoint(edge,'target',byID);if(!a||!b||frame&&[a,b].some(p=>p.width===0&&(p.x<frame.x||p.x>frame.x+frame.width||p.y<frame.y||p.y>frame.y+frame.height)))continue;const d=M.edgePath(board,edge,a,b),dash=edge.pattern==='dashed'?`${edge.thickness*4} ${edge.thickness*3}`:edge.pattern==='dotted'?`1 ${Math.max(5,edge.thickness*2.5)}`:'none';
       const attrs={d,fill:'none','stroke-linecap':'round','stroke-linejoin':'round','stroke-dasharray':dash};
       const width=edge.thickness+(edge.fillMode==='outline'?4:0);
       if(edge.outlineWidth)svg.append(el('path',{...attrs,stroke:edge.outlineColour,'stroke-width':width+edge.outlineWidth*2}));
