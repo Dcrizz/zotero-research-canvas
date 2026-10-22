@@ -1,0 +1,19 @@
+{
+  "addons": {
+    "research-canvas@local": {
+      "updates": [
+        {
+          "version": "0.27.0",
+          "update_link": "https://github.com/Dcrizz/zotero-research-canvas/releases/download/v0.27.0/research-canvas-0.27.0.xpi",
+          "update_hash": "sha256:e42360d02087cd2e5f7ea03cf3841196395bd2f9f5a3eea08f1370ca3bc67d66",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "10.0",
+              "strict_max_version": "10.0.*"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

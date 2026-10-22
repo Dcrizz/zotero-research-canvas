@@ -1,0 +1,196 @@
+(function (root) {
+  'use strict';
+  const O=root.CanvasObjects||(typeof require==='function'?require('./objects.js'):null);
+  const clone = value => JSON.parse(JSON.stringify(value));
+  let appearanceDefaults=null;
+  function setDefaults(value){appearanceDefaults=root.CanvasSettings.validate(value);}
+  const id = () => globalThis.crypto.randomUUID();
+  const colour = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
+  const finite = (v, min, max) => Number.isFinite(v) && v >= min && v <= max;
+  function board(title = 'Untitled board') {
+    return {version: 1, id: id(), title, mode: 'canvas', nodes: [], edges: [], view: {x: 60, y: 60, zoom: 1},...(appearanceDefaults?{appearance:clone(appearanceDefaults.canvas)}:{})};
+  }
+  function node(x = 0, y = 0, title = 'New idea', text = '') {
+    return {id: id(), x, y, width: 240, height: 160, title, text, colour: '#fff9e8', border: '#a68b54', borderWidth: 2, fontSize: 15, link: null,...(appearanceDefaults?clone(appearanceDefaults.card):{})};
+  }
+  function edge(source, target) {
+    return {id: id(), source, target, style: 'curved', colour: '#697b7a', thickness: 2, arrow: 'end', label: '', hierarchy: true};
+  }
+  function validate(b) {
+    if (!b || b.version !== 1 || typeof b.id !== 'string' || typeof b.title !== 'string' || !['canvas', 'mindmap'].includes(b.mode)
+      || !Array.isArray(b.nodes) || !Array.isArray(b.edges) || b.nodes.length > 5000 || b.edges.length > 20000
+      || !b.view || !finite(b.view.x, -1e7, 1e7) || !finite(b.view.y, -1e7, 1e7) || !finite(b.view.zoom, .2, 3)) throw Error('Invalid board format or unsupported version.');
+    if(b.appearance!==undefined&&(!b.appearance||!colour(b.appearance.background)||!colour(b.appearance.gridColour)||!finite(b.appearance.gridSize,8,100)||typeof b.appearance.showGrid!=='boolean'))throw Error('Invalid canvas appearance.');
+    if (b.filters !== undefined && (!b.filters || ['tag','author','year','itemType','colourFamily'].some(k => typeof b.filters[k] !== 'string') || !['dim','hide'].includes(b.filters.mode))) throw Error('Invalid filters.');
+    const ids = new Set();
+    for (const n of b.nodes) {
+      if (!n || typeof n.id !== 'string' || ids.has(n.id) || typeof n.title !== 'string' || typeof n.text !== 'string'
+        || !finite(n.x, -1e7, 1e7) || !finite(n.y, -1e7, 1e7) || !finite(n.width, n.objectType?24:140, 1200) || !finite(n.height, n.objectType?24:100, 1200)
+        || !colour(n.colour) || !colour(n.border) || !finite(n.borderWidth, 0, 12) || !finite(n.fontSize, 10, 40)
+        || (n.kind !== undefined && !['note', 'reference', 'annotation', 'canvas'].includes(n.kind))
+        || (n.kind === 'canvas' && (!/^[a-zA-Z0-9-]{1,80}$/.test(n.canvasID)||typeof n.embedded!=='boolean'))
+        || (n.kind === 'annotation' && (typeof n.annotationHTML !== 'string' || n.annotationHTML.length > 50000000 || !n.link))
+        || (n.annotationKey !== undefined && !/^[A-Z0-9]{8}$/.test(n.annotationKey))
+        || (n.sourceUnavailable !== undefined && typeof n.sourceUnavailable !== 'boolean')
+        || (n.pattern !== undefined && !['solid', 'dashed', 'dotted'].includes(n.pattern))
+        || (n.fillMode !== undefined && !['filled', 'partial', 'outline'].includes(n.fillMode))
+        || (n.kind === 'note' && !n.link)
+        || (n.shape !== undefined && !O.shapes.includes(n.shape))
+        || (n.link !== null && (!n.link || !Number.isInteger(n.link.libraryID) || n.link.libraryID < 1 || !/^[A-Z0-9]{8}$/.test(n.link.key)))) throw Error('Invalid card data.');
+      O.validate(n);
+      if(n.counterexampleEvidence!==undefined){const e=n.counterexampleEvidence;if(!e||(e.purpose!==undefined&&!['counterexample','support'].includes(e.purpose))||!(e.purpose==='support'?['Supports','Corroborates','Supporting example']:['Contradicts','Qualifies','Counterexample','Alternative interpretation']).includes(e.type)||['selectedCardID','selectedTitle','selectedExcerpt','candidateExcerpt','reason','model','generatedAt','selectedSignature','candidateSignature'].some(k=>typeof e[k]!=='string'||e[k].length>1800)||!Number.isFinite(Date.parse(e.generatedAt)))throw Error('Invalid counterexample evidence.');}
+      if ((n.annotationColour !== undefined && !colour(n.annotationColour)) || (n.annotationColourName !== undefined && typeof n.annotationColourName !== 'string')) throw Error('Invalid annotation colour.');
+      if (n.metadata !== undefined && (!n.metadata || !Array.isArray(n.metadata.tags) || n.metadata.tags.some(t => typeof t !== 'string') || ['author','year','itemType'].some(k => typeof n.metadata[k] !== 'string'))) throw Error('Invalid source metadata.');
+      ids.add(n.id);
+    }
+    if (b.frames !== undefined) {
+      if (!Array.isArray(b.frames) || b.frames.length > 500) throw Error('Invalid frames.');
+      const frameIDs = new Set();
+      for (const f of b.frames) {
+        if (!f || typeof f.id !== 'string' || frameIDs.has(f.id) || typeof f.title !== 'string' || f.title.length > 500 || !colour(f.colour) || !colour(f.border)
+          || !finite(f.x, -1e7, 1e7) || !finite(f.y, -1e7, 1e7) || !finite(f.width, 200, 1e7) || !finite(f.height, 200, 1e7)
+          || !Array.isArray(f.members) || f.members.some(id => !ids.has(id))) throw Error('Invalid frame data.');
+        frameIDs.add(f.id);
+      }
+    }
+    if(b.connectionRejections!==undefined&&(!Array.isArray(b.connectionRejections)||b.connectionRejections.length>500||b.connectionRejections.some(r=>!r||['source','target','sourceSignature','targetSignature'].some(k=>typeof r[k]!=='string'||r[k].length>300))))throw Error('Invalid connection review history.');
+    const edgeIDs = new Set();
+    for (const e of b.edges) {
+      if (!e || typeof e.id !== 'string' || edgeIDs.has(e.id) || !(ids.has(e.source) || e.source === null && validPoint(e.sourcePoint)) || !(ids.has(e.target) || e.target === null && validPoint(e.targetPoint)) || e.source !== null && e.source === e.target
+        || !['straight', 'curved', 'elbow'].includes(e.style) || !colour(e.colour) || !finite(e.thickness, 1, 12)
+        || !['none', 'start', 'end', 'both'].includes(e.arrow) || typeof e.label !== 'string' || typeof e.hierarchy !== 'boolean') throw Error('Invalid connector data.');
+      for (const key of ['sourceSide', 'targetSide']) if (e[key] !== undefined && !['top', 'right', 'bottom', 'left'].includes(e[key])) throw Error('Invalid connector attachment side.');
+      if ((e.pattern !== undefined && !['solid', 'dashed', 'dotted'].includes(e.pattern))
+        || (e.fillMode !== undefined && !['filled', 'outline'].includes(e.fillMode))
+        || (e.outlineWidth !== undefined && !finite(e.outlineWidth, 0, 6))
+        || (e.outlineColour !== undefined && !colour(e.outlineColour))) throw Error('Invalid connector appearance.');
+      if(e.aiEvidence!==undefined&&(!e.aiEvidence||['reason','sourceExcerpt','targetExcerpt','sourceTitle','targetTitle','model','generatedAt','sourceSignature','targetSignature'].some(k=>typeof e.aiEvidence[k]!=='string'||e.aiEvidence[k].length>1800)||!Number.isFinite(Date.parse(e.aiEvidence.generatedAt))))throw Error('Invalid connection evidence.');
+      if(e.routePoints!==undefined&&(!Array.isArray(e.routePoints)||e.routePoints.length>100||e.routePoints.some(p=>!validPoint(p))))throw Error('Invalid connector route points.');
+      edgeIDs.add(e.id);
+    }
+    return clone(b);
+  }
+  // First incoming hierarchy edge owns placement. Cross-links and cycles remain intact.
+  function layout(b) {
+    const children = new Map(b.nodes.map(n => [n.id, []]));
+    const parent = new Set();
+    for (const e of b.edges) if (e.hierarchy && children.has(e.source) && children.has(e.target) && !parent.has(e.target)) {
+      children.get(e.source).push(e.target); parent.add(e.target);
+    }
+    const nodes = new Map(b.nodes.map(n => [n.id, n]));
+    const widths = [];
+    const seen = new Set(); const levels = new Map();
+    const order = [], roots = [], tree = new Map(b.nodes.map(n => [n.id, []]));
+    function visit(start) {
+      roots.push(start);
+      const stack = [[start, 0, null]];
+      while (stack.length) {
+        const [key, depth, ancestor] = stack.pop(); if (seen.has(key)) continue;
+        seen.add(key); levels.set(key, depth); order.push(key);
+        if (ancestor) tree.get(ancestor).push(key);
+        widths[depth] = Math.max(widths[depth] || 0, nodes.get(key).width);
+        for (const child of [...children.get(key)].reverse()) stack.push([child, depth + 1, key]);
+      }
+    }
+    b.nodes.filter(n => !parent.has(n.id)).forEach(n => visit(n.id));
+    b.nodes.forEach(n => { if (!seen.has(n.id)) visit(n.id); });
+    const columns = [0]; widths.forEach((w, i) => { columns[i + 1] = columns[i] + w + 100; });
+    const spans = new Map();
+    for (const key of [...order].reverse()) {
+      const kids = tree.get(key);
+      spans.set(key, Math.max(nodes.get(key).height, kids.reduce((sum, child) => sum + spans.get(child), 0) + Math.max(0, kids.length - 1) * 35));
+    }
+    const result = new Map(); let y = 0;
+    const stack = [];
+    for (const key of roots) { stack.push([key, y]); y += spans.get(key) + 80; }
+    while (stack.length) {
+      const [key, top] = stack.pop();
+      result.set(key, {x: columns[levels.get(key)], y: top + (spans.get(key) - nodes.get(key).height) / 2});
+      let childTop = top;
+      for (const child of tree.get(key)) { stack.push([child, childTop]); childTop += spans.get(child) + 35; }
+    }
+    return result;
+  }
+  function positions(b) { return b.mode === 'mindmap' ? layout(b) : new Map(b.nodes.map(n => [n.id, {x: n.x, y: n.y}])); }
+  const validPoint = p => p && finite(p.x,-1e7,1e7) && finite(p.y,-1e7,1e7);
+  function endpoint(e,end,nodes){return e[end]===null?{...e[end+'Point'],width:0,height:0}:nodes.get(e[end]);}
+  function extraRects(b){return b.edges.flatMap(e=>[...(e.routePoints||[]),...(e.source===null?[e.sourcePoint]:[]),...(e.target===null?[e.targetPoint]:[])]).map(p=>({...p,width:0,height:0}));}
+  function child(parent,side='right'){
+    const n=node();for(const key of ['colour','border','borderWidth','fontSize','shape','pattern','fillMode'])if(parent[key]!==undefined)n[key]=parent[key];
+    if(parent.objectType&&!['library','file'].includes(parent.objectType)){n.objectType=parent.objectType;if(parent.objectType==='table'){n.objectData={cells:parent.objectData.cells.map(r=>r.map(()=>''))};n.text=O.markdown(n);}if(parent.objectType==='wireframe')n.objectData={variant:parent.objectData.variant};}
+    n.width=Math.max(parent.objectType?24:140,Math.round(parent.width*.85));n.height=Math.max(parent.objectType?24:100,Math.round(parent.height*.85));
+    n.x=side==='left'?parent.x-n.width-100:side==='right'?parent.x+parent.width+100:parent.x+(parent.width-n.width)/2;
+    n.y=side==='top'?parent.y-n.height-100:side==='bottom'?parent.y+parent.height+100:parent.y+(parent.height-n.height)/2;return n;
+  }
+  function anchor(n, side) {
+    return {x: n.x + (side === 'left' ? 0 : side === 'right' ? n.width : n.width / 2), y: n.y + (side === 'top' ? 0 : side === 'bottom' ? n.height : n.height / 2)};
+  }
+  function path(a, c, style, sourceSide = 'right', targetSide = 'left', routePoints = []) {
+    const {x: x1, y: y1} = anchor(a, sourceSide), {x: x2, y: y2} = anchor(c, targetSide);
+    if(routePoints.length){
+      const points=[{x:x1,y:y1},...routePoints,{x:x2,y:y2}];let d=`M ${x1} ${y1}`;
+      if(style==='curved'){for(let i=1;i<points.length-1;i++){const p=points[i],next=points[i+1];d+=` Q ${p.x} ${p.y} ${(p.x+next.x)/2} ${(p.y+next.y)/2}`;}return d+` L ${x2} ${y2}`;}
+      for(const p of points.slice(1))d+=style==='elbow'?` H ${p.x} V ${p.y}`:` L ${p.x} ${p.y}`;return d;
+    }
+    const mid = (x1 + x2) / 2;
+    if (style === 'straight') return `M ${x1} ${y1} L ${x2} ${y2}`;
+    const horizontal = side => ['left', 'right'].includes(side);
+    if (style === 'elbow') {
+      if (horizontal(sourceSide) && horizontal(targetSide)) return `M ${x1} ${y1} H ${mid} V ${y2} H ${x2}`;
+      if (!horizontal(sourceSide) && !horizontal(targetSide)) return `M ${x1} ${y1} V ${(y1 + y2) / 2} H ${x2} V ${y2}`;
+      return horizontal(sourceSide) ? `M ${x1} ${y1} H ${x2} V ${y2}` : `M ${x1} ${y1} V ${y2} H ${x2}`;
+    }
+    const distance = Math.max(50, Math.hypot(x2 - x1, y2 - y1) / 2);
+    const offset = side => ({left: [-distance, 0], right: [distance, 0], top: [0, -distance], bottom: [0, distance]}[side]);
+    const s = offset(sourceSide), t = offset(targetSide);
+    return `M ${x1} ${y1} C ${x1 + s[0]} ${y1 + s[1]} ${x2 + t[0]} ${y2 + t[1]} ${x2} ${y2}`;
+  }
+  function bounds(nodes, padding = 0) {
+    const left = Math.min(...nodes.map(n => n.x)), top = Math.min(...nodes.map(n => n.y)) - 45;
+    const right = Math.max(...nodes.map(n => n.x + n.width)), bottom = Math.max(...nodes.map(n => n.y + n.height));
+    return {x: left - padding, y: top - padding, width: Math.max(200, right - left + padding * 2), height: Math.max(200, bottom - top + padding * 2)};
+  }
+  function droppedIDs(raw) {
+    if (typeof raw !== 'string' || !/^\d+(,\d+)*$/.test(raw) || raw.length > 4000) throw Error('Drop notes or references from Zotero\'s items list.');
+    const ids = [...new Set(raw.split(',').map(Number))];
+    if (ids.length > 200 || ids.some(id => !Number.isSafeInteger(id) || id < 1)) throw Error('Drop up to 200 valid Zotero items at a time.');
+    return ids;
+  }
+  function labelPalette(hex) {
+    const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+    const background = '#' + rgb.map(v => Math.round(v * .84).toString(16).padStart(2, '0')).join('');
+    const linear = rgb.map(v => { const s = v * .84 / 255; return s <= .04045 ? s / 12.92 : ((s + .055) / 1.055) ** 2.4; });
+    const light = .2126 * linear[0] + .7152 * linear[1] + .0722 * linear[2];
+    const foreground = light > .179 ? '#000000' : '#ffffff';
+    return {background, foreground, border: foreground};
+  }
+  function resize(rect, direction, dx, dy) {
+    const width = Math.max(rect.minWidth||140, Math.min(1200, rect.width + (direction.includes('w') ? -dx : direction.includes('e') ? dx : 0)));
+    const height = Math.max(rect.minHeight||100, Math.min(1200, rect.height + (direction.includes('n') ? -dy : direction.includes('s') ? dy : 0)));
+    return {x: direction.includes('w') ? rect.x + rect.width - width : rect.x, y: direction.includes('n') ? rect.y + rect.height - height : rect.y, width, height};
+  }
+  function referenceTitle(creator, year, title) {
+    const author=String(creator||'').trim(),date=String(year||'').trim(),name=String(title||'').trim()||'Untitled document';
+    const citation=[author,date?'('+date+')':''].filter(Boolean).join(' ');
+    return citation?citation+' - '+name:name;
+  }
+  function annotationLabel(hex, palette = []) {
+    const colour=String(hex||'').toLowerCase(),custom=Array.isArray(palette)?palette.find(entry=>Array.isArray(entry)&&typeof entry[0]==='string'&&String(entry[1]).toLowerCase()===colour):null;
+    if(custom)return custom[0].replace(/^#/,'');
+    return {'#ffd400':'Yellow','#ff6666':'Red','#5fb236':'Green','#2ea8e5':'Blue','#a28ae5':'Purple','#e56eee':'Magenta','#f19837':'Orange','#aaaaaa':'Grey','#39cacf':'Teal','#b4a68e':'Brown','#ffa4c6':'Pink','#befae8':'Mint'}[colour]||'Custom colour';
+  }
+  const meaningFields = ['label','style','colour','thickness','arrow','hierarchy','pattern','fillMode','outlineWidth','outlineColour'];
+  function meaning(id, title, edge) {
+    if (typeof id !== 'string' || typeof title !== 'string' || !title.trim() || title.length > 100) throw Error('Give the connector meaning a name of up to 100 characters.');
+    const value = {id, title: title.trim(), pattern:'solid', fillMode:'filled', outlineWidth:0, outlineColour:'#253d3b'};
+    for (const key of meaningFields) if (edge[key] !== undefined) value[key] = edge[key];
+    const b=board(),a=node(),c=node();b.nodes=[a,c];b.edges=[{...value,id:'preset-validation',source:a.id,target:c.id}];validate(b);
+    return value;
+  }
+  function defaultMeanings() {
+    return [['supports','Supporting link','SL ✅','#287b63','solid'],['contradicts','Critical link','❌CL','#b34747','dashed'],['extends','Extends','Extends','#4679a3','solid'],['example','Example of','Example of','#967536','dotted']].map(([id,title,label,colour,pattern])=>meaning(id,title,{label,colour,pattern,style:'curved',thickness:3,arrow:'end',hierarchy:false}));
+  }
+  const api = {setDefaults, clone, board, node, edge, endpoint, extraRects, child, validate, layout, positions, path, anchor, droppedIDs, labelPalette, resize, bounds, meaning, meaningFields, defaultMeanings, annotationLabel, referenceTitle};
+  if (typeof module !== 'undefined') module.exports = api;
+  else root.CanvasModel = api;
+})(globalThis);

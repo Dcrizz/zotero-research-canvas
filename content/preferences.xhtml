@@ -1,0 +1,37 @@
+<vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul" xmlns:html="http://www.w3.org/1999/xhtml" onload="ResearchCanvasPreferences.init(this)">
+  <groupbox><html:h2>AI access</html:h2><html:p>Choose the existing Awesome GPT connection, or use your own HTTPS Chat Completions provider. AI requests run only when you choose an AI action on a card.</html:p>
+    <html:div class="research-canvas-pref-grid">
+      <html:label>Provider<html:select id="research-canvas-api-provider"><html:option value="awesome-gpt">Awesome GPT</html:option><html:option value="openai-compatible">Own API key</html:option></html:select></html:label>
+      <html:label>Model<html:input id="research-canvas-api-model" type="text" maxlength="120" placeholder="Provider model ID"/></html:label>
+      <html:label>Chat Completions URL<html:input id="research-canvas-api-endpoint" type="url" maxlength="2048"/></html:label>
+      <html:label>API key<html:input id="research-canvas-api-key" type="password" autocomplete="off" placeholder="Stored in Zotero's password manager"/></html:label>
+    </html:div><html:div class="research-canvas-link-actions"><html:button id="research-canvas-save-api-key" type="button">Save API key</html:button><html:button id="research-canvas-clear-api-key" type="button">Remove API key</html:button><html:span id="research-canvas-api-key-status" role="status"/></html:div>
+  </groupbox>
+  <groupbox><html:h2>Obsidian export</html:h2><html:p>Send editable canvases and Markdown notes to a folder inside your Obsidian vault. Each export creates a separate snapshot.</html:p>
+    <html:label for="research-canvas-export-path">Export folder</html:label><html:div class="research-canvas-path-row"><html:input id="research-canvas-export-path" type="text" placeholder="Choose a folder inside your vault"/><html:button id="research-canvas-browse" type="button">Browse…</html:button></html:div>
+    <html:label><html:input id="research-canvas-open-after" type="checkbox"/> Open the exported canvas in Obsidian</html:label>
+  </groupbox>
+  <groupbox><html:h2>Default card appearance</html:h2><html:p>Applies to newly added cards. Existing card styling is preserved.</html:p><html:div class="research-canvas-pref-grid">
+    <html:label>Card colour<html:input id="research-canvas-card-colour" type="color"/></html:label><html:label>Border colour<html:input id="research-canvas-card-border" type="color"/></html:label>
+    <html:label>Border thickness<html:input id="research-canvas-card-borderWidth" type="number" min="0" max="12"/></html:label><html:label>Text size<html:input id="research-canvas-card-fontSize" type="number" min="10" max="40"/></html:label>
+    <html:label>Width<html:input id="research-canvas-card-width" type="number" min="140" max="1200"/></html:label><html:label>Height<html:input id="research-canvas-card-height" type="number" min="100" max="1200"/></html:label>
+    <html:label>Shape<html:select id="research-canvas-card-shape"><html:option value="rounded">Rounded rectangle</html:option><html:option value="rectangle">Rectangle</html:option><html:option value="ellipse">Ellipse</html:option></html:select></html:label>
+  </html:div></groupbox>
+  <groupbox><html:h2>Default canvas appearance</html:h2><html:p>Applies when creating a new canvas.</html:p><html:div class="research-canvas-pref-grid">
+    <html:label>Background<html:input id="research-canvas-canvas-background" type="color"/></html:label><html:label>Grid colour<html:input id="research-canvas-canvas-gridColour" type="color"/></html:label><html:label>Grid spacing<html:input id="research-canvas-canvas-gridSize" type="number" min="8" max="100"/></html:label><html:label><html:input id="research-canvas-canvas-showGrid" type="checkbox"/> Show dotted grid</html:label>
+  </html:div></groupbox>
+  <groupbox><html:h2>Link types</html:h2><html:p>Define reusable connector labels and appearances. Apply a type from a connector's Link types menu on any canvas.</html:p>
+    <html:div id="research-canvas-link-types" class="research-canvas-link-types"/>
+    <html:div class="research-canvas-link-editor research-canvas-pref-grid">
+      <html:label>Type name<html:input id="research-canvas-link-name" type="text" maxlength="100" placeholder="e.g. Challenges"/></html:label>
+      <html:label>Label shown on link<html:input id="research-canvas-link-label" type="text" maxlength="120" placeholder="e.g. ❌CL"/></html:label>
+      <html:label>Colour<html:input id="research-canvas-link-colour" type="color" value="#277c6b"/></html:label>
+      <html:label>Thickness<html:input id="research-canvas-link-thickness" type="number" min="1" max="12" value="3"/></html:label>
+      <html:label>Line pattern<html:select id="research-canvas-link-pattern"><html:option value="solid">Solid</html:option><html:option value="dashed">Dashed</html:option><html:option value="dotted">Dotted</html:option></html:select></html:label>
+      <html:label>Route<html:select id="research-canvas-link-style"><html:option value="curved">Curved</html:option><html:option value="straight">Straight</html:option><html:option value="elbow">Elbow</html:option></html:select></html:label>
+      <html:label>Arrowheads<html:select id="research-canvas-link-arrow"><html:option value="end">At end</html:option><html:option value="none">None</html:option><html:option value="start">At start</html:option><html:option value="both">Both</html:option></html:select></html:label>
+    </html:div>
+    <html:div class="research-canvas-link-actions"><html:button id="research-canvas-link-save" type="button">Add link type</html:button><html:button id="research-canvas-link-cancel" type="button" hidden="hidden">Cancel edit</html:button></html:div>
+  </groupbox>
+  <html:div class="research-canvas-pref-actions"><html:button id="research-canvas-save-settings" type="button">Save settings</html:button><html:button id="research-canvas-reset-appearance" type="button">Reset appearance defaults</html:button><html:span id="research-canvas-pref-status" role="status"/></html:div>
+</vbox>

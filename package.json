@@ -1,0 +1,22 @@
+{
+  "name": "zotero-research-canvas",
+  "version": "0.27.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/*.test.cjs",
+    "build": "python3 scripts/build.py",
+    "test:ui": "node test/ui.cjs",
+    "test:workspace": "node test/workspace-ui.cjs",
+    "test:explorer": "node test/explorer-ui.cjs",
+    "test:obsidian": "node test/obsidian-ui.cjs",
+    "test:connections": "node test/connections-ui.cjs",
+    "test:ports": "node test/ports-ui.cjs",
+    "test:counterexamples": "node test/counterexamples-ui.cjs",
+    "test:layout": "node test/layout-ui.cjs",
+    "test:card-ai": "node test/card-ai-ui.cjs",
+    "test:objects": "node test/objects-ui.cjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  }
+}

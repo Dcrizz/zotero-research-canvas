@@ -1,0 +1,35 @@
+name: Build and test
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - run: npm run test:ui
+      - run: npm run test:workspace
+      - run: npm run test:explorer
+      - run: npm run test:obsidian
+      - run: npm run test:connections
+      - run: npm run test:ports
+      - run: npm run test:counterexamples
+      - run: npm run test:layout
+      - run: npm run test:card-ai
+      - run: npm run test:objects
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-canvas-xpi
+          path: ../research-canvas-*.xpi

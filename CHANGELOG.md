@@ -1,0 +1,48 @@
+# Changes
+
+- 0.27.0: Reusable link types can be created, edited and removed in Zotero Settings. Supporting and critical links default to `SL ✅` and `❌CL`; connector labels remain fully visible.
+- 0.27.0: Adds an optional HTTPS OpenAI-compatible provider with a user-supplied endpoint, model and API key stored in Zotero's password manager. The existing Awesome GPT provider remains available.
+- 0.27.0: Publishes installation, AI/MCP setup, privacy, testing and contribution guidance for the public release.
+- 0.26.1: Object palettes close when their toolbar icon is clicked again. Cards gain partial fill, and the object toolbar imports images and documents with embedded images and scrollable previews where supported.
+
+- 0.26.0: Adds a vertical object palette: nine diagram shapes, six sticky-note colours, text boxes, editable tables, six wireframe components and three research/screen templates. Objects support selection, move, resize, connectors, history and save/reload.
+- 0.26.0: Includes 26 MIT Excalidraw Forms library items with attribution and licence notices. Imports version 1/2 .excalidrawlib vector sets into a reusable local library, reporting unsupported elements. Imported items remain vector composites; SVG/Obsidian export preserves assets and notices.
+- 0.26.0: Table cells/rows/columns have a dedicated editor; SVG exports preserve object appearance and Obsidian exports tables as editable Markdown. Diagram objects can resize below standard source-card minimums.
+
+- 0.25.1: Filters & colours, Select cards and Find on canvases use SVG icons with hover/focus labels. Box-selection mode highlights its icon, uses a crosshair and shows an on-canvas drag hint; Escape resets it. Shift-drag remains available.
+
+- 0.25.0: AI actions move from the research toolbar into an icon menu above every card: Connections, Counter, Supporting. Actions select the clicked card; Connections only suggests relationships involving it and clears old results when changing cards. Keyboard navigation and Escape/outside dismissal are supported.
+- 0.25.0: Removes the top-level Child button; port-click creation remains. Undo/Redo become labeled SVG icon buttons with hover text. JSON export/import and export/recovery move into a right-aligned Export / Import menu.
+
+- 0.24.0: Shared explicit choice controls replace remaining native HTML dropdowns (view mode, folder destinations and default shape), avoiding recurring duplicated popup text in Zotero chrome windows. Adds arrow-key selection, bounded folder lists, wrapping tool rows and viewport-clamped menus/dialogs.
+- 0.24.0: Adding a reviewed counterexample creates a red Counterexample connector to the original selected card. Find supporting sources reuses semantic retrieval and exact excerpt review; adding one creates a green Supporting source connector. Card and connector are saved/undone together; saved explanations are available from either. No graph mutation occurs while generating or dismissing results.
+
+- 0.23.0: Counterexample search uses the existing Zotero MCP semantic index and configured Awesome GPT model to retrieve saved library notes/annotations. Shows exact supporting excerpts and individual Add/Dismiss decisions; chosen cards retain their explanation without automatically linking or changing source notes.
+- 0.23.0: Hover ports display a plus; click creates a child inheriting appearance at 85% of parent dimensions (minimum 140 by 100). Drag creates attached or loose connectors; selected endpoints and bend handles can be dragged. Custom routes persist, undo and export.
+- 0.23.0: Repairs AI scope controls, aligns dark blue note action buttons with card tops, and moves card/frame creation to an empty-canvas right-click icon toolbar.
+
+- 0.22.0: AI connection review uses the configured Awesome GPT model, supports selected cards/frame/all cards, verifies verbatim excerpts from both sources, and requires individual Accept/Reject decisions. Accepted links preserve explanations/evidence; unchanged rejected pairs and existing links are excluded. Changed sources, board switches, cancellation and save failures are guarded. Accepted note-to-note links retain the existing additive Zotero Related behavior.
+
+- 0.21.0: Send to Obsidian exports editable JSON Canvas files, Markdown source cards and annotation image assets, including linked canvases and reciprocal references. Exports are separate snapshots with source links; existing exports are never overwritten.
+- 0.21.0: Zotero Settings → Research Canvas configures the Obsidian export folder/open-after-send and default card colours/borders/size/shape/text plus canvas background/grid. Existing styling is preserved.
+
+- 0.20.2: Explorer folder titles use bold 14px type, slightly larger than 13px canvas titles.
+
+- 0.20.1: top-right Explorer fold button and canvas-edge unfold button, preserving the app-icon toggle.
+- 0.20.1: folder icons with persistent custom colours and reset from the folder context menu; canvas rows use the supplied easel icon, including entries in folders and Trash.
+
+- 0.20.0: fold-out Canvas Explorer with named canvas creation, folders, drag-to-folder organisation, rename/move context actions, recoverable Trash, and active-canvas accent. Header management controls move into Explorer.
+- 0.20.0: cross-canvas link and live embedded overview cards; reciprocal embeds remain one level deep; incoming-link lookup and open-canvas navigation. Embedded overview images are retained in exports.
+- 0.20.0: removes the persistent Selection pane; idea/reference text edits live in the floating Text tool, delete icons in card/connector toolbars, and membership results in a closable pop-up.
+
+- 0.12.0: independent named frames, floating styling toolbar, group movement and mode retention. Installed after browser and model review.
+- 0.12.1: replaced overlapping native search dropdown with segmented method buttons. Installed after browser regression checks.
+- 0.13.0: source metadata filters, tag-family colour overlays, strict search content-type selection and closing results after insertion. Installed after 75 native checks.
+- 0.14.0: exact annotation source navigation. Installed after 76 native checks.
+- 0.15.0: multiple selection, group movement/resizing, alignment, spacing, colour and deletion. Installed after 78 native checks.
+- 0.16.0: built-in and custom reusable connector meanings. Installed after 79 native checks.
+- 0.17.0: canvas membership and jump-to-card navigation. Installed after 82 native checks.
+- 0.18.0: SVG/PNG/PDF exports; automatic history with non-destructive recovery; annotation header menu, native-style preview/tag pills and highlight-colour pill; frame controls remain accessible over card content.
+- 0.18.1: annotation-colour labels follow the active custom palette in the live library, including custom pink/teal/brown/mint colours and semantic names.
+- 0.19.0: annotation outer headers use Creator (YYYY) - Item title; native annotation headings/content inside cards are retained; existing source links refresh headers after reference metadata edits.
+- 0.19.0: zoom controls moved into a bottom-left icon toolbar with hover/focus labels, centre-preserving zoom, 100% reset, Centre and Fit all.

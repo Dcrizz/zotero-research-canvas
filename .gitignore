@@ -1,0 +1,11 @@
+node_modules/
+.DS_Store
+.impeccable/
+VERIFICATION.md
+test/live-*.json
+test/native-*.json
+test/*-result.json
+*.xpi
+*-source.zip
+.env
+.env.*
