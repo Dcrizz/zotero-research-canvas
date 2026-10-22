@@ -1058,7 +1058,7 @@ async function renameBoard(id,title){
 }
 async function trashBoard(id){
   await saveInlineNotes(true);await closeNote();await flush();await bridge.organise({op:'trashBoard',id});
-  if(board.id===id){const rows=await bridge.list();if(rows.length)await switchBoard(rows[0].id);else await createBoard();}await refreshList();
+  if(board.id===id){const rows=(await bridge.list()).filter(row=>!row.templateDraft);if(rows.length)await switchBoard(rows[0].id);else await createBoard();}await refreshList();
 }
 async function insertCanvas(id,embedded=true){
   if(id===board.id)throw Error('Choose another canvas to link or embed.');

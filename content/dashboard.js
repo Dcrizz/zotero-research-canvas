@@ -6,6 +6,24 @@ window.addEventListener('DOMContentLoaded',()=>{
   const svgNS='http://www.w3.org/2000/svg';
   const svg=(tag,attributes={})=>{const element=document.createElementNS(svgNS,tag);for(const [key,value] of Object.entries(attributes))element.setAttribute(key,String(value));return element;};
   let rows=[],library,folderID=null,layout='grid',dialogKind=null,request=0,templateLibrary=CanvasTemplates.empty(),deletePending=false;
+  const tileMenu=document.createElement('div');tileMenu.id='dashboard-tile-menu';tileMenu.setAttribute('role','menu');tileMenu.hidden=true;document.body.append(tileMenu);
+  function closeTileMenu(){tileMenu.hidden=true;tileMenu.replaceChildren();}
+  document.addEventListener('pointerdown',event=>{if(!tileMenu.contains(event.target))closeTileMenu();});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!tileMenu.hidden){closeTileMenu();event.stopPropagation();}});
+  function tileMenuButton(label,action,host=tileMenu){const button=document.createElement('button');button.type='button';button.setAttribute('role','menuitem');button.textContent=label;button.onclick=act(action);host.append(button);return button;}
+  function openTileMenu(event,row){
+    event.preventDefault();closeTileMenu();
+    const move=tileMenuButton('Move',()=>{destinations.hidden=!destinations.hidden;move.setAttribute('aria-expanded',String(!destinations.hidden));tileMenu.style.top=Math.max(8,Math.min(parseFloat(tileMenu.style.top),window.innerHeight-tileMenu.offsetHeight-8))+'px';if(!destinations.hidden)destinations.querySelector('button')?.focus();});
+    move.setAttribute('aria-haspopup','true');move.setAttribute('aria-expanded','false');
+    const destinations=document.createElement('div');destinations.className='tile-menu-destinations';destinations.hidden=true;tileMenu.append(destinations);
+    const current=library.boards[row.id]?.folderID||null;
+    for(const destination of [{id:null,name:'All canvases'},...library.folders.map(folder=>({id:folder.id,name:folderName(folder.id)}))]){
+      const option=tileMenuButton(destination.name,async()=>{if(destination.id===current){closeTileMenu();return;}await bridge.dashboardOrganiseBoard({op:'moveBoard',id:row.id,folderID:destination.id});closeTileMenu();await refresh();},destinations);
+      if(destination.id===current)option.setAttribute('aria-current','true');
+    }
+    tileMenuButton('Delete',async()=>{await bridge.dashboardOrganiseBoard({op:'trashBoard',id:row.id});closeTileMenu();await refresh();});
+    tileMenu.hidden=false;tileMenu.style.left=Math.max(8,Math.min(event.clientX,window.innerWidth-193))+'px';tileMenu.style.top=Math.max(8,Math.min(event.clientY,window.innerHeight-100))+'px';move.focus();
+  }
   let managerLibrary=CanvasTemplates.empty(),resetDefaultsPending=false,deleteCustomPending=false,restoreOnePending=false;
   const sourceFirstModes=new Set(['matrix','literature','evidence','conceptmap','affinity','debate']);
   const fail=error=>{console.error(error);$('status').textContent=error.message||String(error);$('status').classList.add('error');};
@@ -59,7 +77,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     button.append(preview(board));const info=document.createElement('div');info.className='tile-info';const name=document.createElement('strong');name.textContent=row.title;
     const detail=document.createElement('small');const date=Number(row.modified)?new Date(row.modified).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'Saved locally';
     const cards=board.nodes.filter(n=>!n.junction).length;detail.textContent=(row.templateID?'Saved template · ':'')+(CanvasFormats.modes[board.mode]||'Canvas')+' · '+date+' · '+cards+' card'+(cards===1?'':'s');
-    info.append(name,detail);button.append(info);button.onclick=act(()=>row.templateID?bridge.dashboardEditTemplate(board.mode,row.templateID):bridge.dashboardOpenBoard(row.id));return button;
+    info.append(name,detail);button.append(info);button.onclick=act(()=>bridge.dashboardOpenBoard(row.id));button.oncontextmenu=event=>openTileMenu(event,row);return button;
   }
   async function renderCanvases(){
     const current=++request,host=$('canvases'),query=$('search').value.trim().toLocaleLowerCase();host.replaceChildren();host.classList.toggle('list',layout==='list');
@@ -78,12 +96,11 @@ window.addEventListener('DOMContentLoaded',()=>{
   function render(){renderFolders();return renderCanvases().catch(fail);}
   async function refresh(){
     if(!bridge)throw Error('Canvas library is unavailable.');
-    const [next,index,saved]=await Promise.all([bridge.list(),bridge.libraryState(),bridge.listTemplates()]);
+    const [next,index]=await Promise.all([bridge.list(),bridge.libraryState()]);
     const visible=[];
     for(const row of next){const draft=row.templateDraft??(await bridge.load(row.id)).templateDraft;if(!draft)visible.push(row);}
-    for(const template of saved.custom)if(template.board)visible.push({id:'saved-template-'+template.id,title:template.name,templateID:template.id,templateBoard:template.board});
-    for(const [mode,board] of Object.entries(saved.builtinOverrides||{}))visible.push({id:'saved-default-'+mode,title:'Default '+CanvasFormats.modes[mode],templateID:'builtin',templateBoard:board});
     rows=visible;library=index;
+    closeTileMenu();
     if(folderID&&!library.folders.some(f=>f.id===folderID))folderID=null;
     $('library-count').textContent=rows.length+' canvas'+(rows.length===1?'':'es')+' · '+library.folders.length+' folder'+(library.folders.length===1?'':'s');await render();
     if(!$('templates-shade').hidden)await refreshTemplateManager();

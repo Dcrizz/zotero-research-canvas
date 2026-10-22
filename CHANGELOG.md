@@ -1,5 +1,7 @@
 # Changes
 
+- 0.39.1: Dashboard preview cards for active canvases now have a right-click menu to move them between folders or delete them to the existing Trash. Saved custom templates and customised defaults remain in the Templates pane instead of appearing as active canvases.
+
 - 0.39.0: New Comparison Matrix, Literature map, Evidence map, Concept Map, Affinity Diagram and Debate Tree canvases open Add Sources after naming. Generated canvases retain selected source IDs and focus. Later Add Sources offers Keep and add or Replace, shows removable source chips and regenerates from the chosen set; Undo restores the previous graph. Older generated canvases recover sources from linked cards when possible. Send to Canvas offers active canvases only, and Zotero items cannot be dropped into instruction templates.
 
 - 0.38.0: Replaces the Add Sources card list with a compact Zotero-style table: Creator, Year, Title, Annotations, Notes and Tags. Fixes list-pane overflow; supports full-collection scrolling with a fixed header, virtual rows and on-demand metadata pages. Adds Creator/Year/Title sorting, annotation colour indicators, note counts and coloured tags. Preserves the eight-source selection limit and existing template run behavior.

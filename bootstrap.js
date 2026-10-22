@@ -573,6 +573,17 @@ async function startup({rootURI}) {
     if(typeof name!=='string'||!name.trim()||name.length>200)throw Error('Invalid folder name.');
     return canvasBridge.organise({op:'createFolder',id:Services.uuid.generateUUID().toString().slice(1,-1),name:name.trim(),folderID:parentID});
   };
+  canvasBridge.dashboardOrganiseBoard=async command=>{
+    if(!['moveBoard','trashBoard'].includes(command?.op))throw Error('Invalid canvas action.');
+    const board=await canvasBridge.load(command.id);
+    if(board.templateDraft)throw Error('Templates are managed in the Templates pane.');
+    if(command.op==='trashBoard'&&canvasWindow&&!canvasWindow.closed&&canvasWindow.CanvasApp?.getBoard()?.id===command.id){
+      await canvasWindow.CanvasApp.trashBoard(command.id);
+    }else{
+      await canvasBridge.organise(command);
+      await canvasWindow?.CanvasApp?.refreshExplorer();
+    }
+  };
   CanvasModel.setDefaults(await canvasBridge.getSettings());
   Zotero.ResearchCanvasPreferences={openTemplates:()=>canvasBridge.openTemplateManager(),defaults:()=>CanvasSettings.defaults(),get:()=>canvasBridge.getSettings(),save:value=>canvasBridge.saveSettings(value),choose:window=>canvasBridge.chooseObsidianDirectory(window),hasAIKey:()=>!!readAIKey(),saveAIKey:value=>writeAIKey(value),listLinkTypes:()=>canvasBridge.listMeanings(),saveLinkTypes:values=>canvasBridge.saveMeanings(values),defaultLinkTypes:()=>CanvasModel.defaultMeanings(),linkType:(id,title,edge)=>CanvasModel.meaning(id,title,edge)};
   await Zotero.PreferencePanes.register({id:'research-canvas-settings',pluginID:'research-canvas@local',src:rootURI+'content/preferences.xhtml',scripts:[rootURI+'content/choices.js',rootURI+'content/preferences.js'],stylesheets:[rootURI+'content/choices.css',rootURI+'content/preferences.css'],label:'Zotero Canvas',image:rootURI+'content/icon.png'});
