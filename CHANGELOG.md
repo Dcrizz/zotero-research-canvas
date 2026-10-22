@@ -1,5 +1,7 @@
 # Changes
 
+- 0.39.3: Shows the Canvas app icon beside Send to Canvas in the PDF reader annotation menu.
+
 - 0.39.1: Dashboard preview cards for active canvases now have a right-click menu to move them between folders or delete them to the existing Trash. Saved custom templates and customised defaults remain in the Templates pane instead of appearing as active canvases.
 
 - 0.39.0: New Comparison Matrix, Literature map, Evidence map, Concept Map, Affinity Diagram and Debate Tree canvases open Add Sources after naming. Generated canvases retain selected source IDs and focus. Later Add Sources offers Keep and add or Replace, shows removable source chips and regenerates from the chosen set; Undo restores the previous graph. Older generated canvases recover sources from linked cards when possible. Send to Canvas offers active canvases only, and Zotero items cannot be dropped into instruction templates.

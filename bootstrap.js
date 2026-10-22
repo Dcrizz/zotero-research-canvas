@@ -588,10 +588,33 @@ async function startup({rootURI}) {
   Zotero.ResearchCanvasPreferences={openTemplates:()=>canvasBridge.openTemplateManager(),defaults:()=>CanvasSettings.defaults(),get:()=>canvasBridge.getSettings(),save:value=>canvasBridge.saveSettings(value),choose:window=>canvasBridge.chooseObsidianDirectory(window),hasAIKey:()=>!!readAIKey(),saveAIKey:value=>writeAIKey(value),listLinkTypes:()=>canvasBridge.listMeanings(),saveLinkTypes:values=>canvasBridge.saveMeanings(values),defaultLinkTypes:()=>CanvasModel.defaultMeanings(),linkType:(id,title,edge)=>CanvasModel.meaning(id,title,edge)};
   await Zotero.PreferencePanes.register({id:'research-canvas-settings',pluginID:'research-canvas@local',src:rootURI+'content/preferences.xhtml',scripts:[rootURI+'content/choices.js',rootURI+'content/preferences.js'],stylesheets:[rootURI+'content/choices.css',rootURI+'content/preferences.css'],label:'Zotero Canvas',image:rootURI+'content/icon.png'});
 
-  annotationMenuHandler = event => event.append({label: 'Send to Canvas...', onCommand: () => sendToCanvas(Zotero.getMainWindow(), async () => {
+  annotationMenuHandler = event => {
+    event.append({label: 'Send to Canvas...', onCommand: () => sendToCanvas(Zotero.getMainWindow(), async () => {
     const attachment = await Zotero.Items.getAsync(event.reader.itemID);
     return Promise.all(event.params.ids.map(key => Zotero.Items.getByLibraryAndKeyAsync(attachment.libraryID, key)));
-  }).catch(error => { Zotero.logError(error); Services.prompt.alert(Zotero.getMainWindow(), 'Send to Canvas', error.message); })});
+    }).catch(error => { Zotero.logError(error); Services.prompt.alert(Zotero.getMainWindow(), 'Send to Canvas', error.message); })});
+    const doc = event.reader._iframeWindow.document;
+    const addIcon = () => {
+      const item = [...doc.querySelectorAll('.context-menu button.row.basic')]
+        .find(button => button.textContent.trim() === 'Send to Canvas...');
+      if (!item || item.querySelector('.icon')) return false;
+      const icon = doc.createElement('div');
+      icon.className = 'icon';
+      const image = doc.createElement('img');
+      image.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAIAAABvFaqvAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAARGVYSWZNTQAqAAAACAABh2kABAAAAAEAAAAaAAAAAAADoAEAAwAAAAEAAQAAoAIABAAAAAEAAAAYoAMABAAAAAEAAAAYAAAAAOI1da0AAAHLaVRYdFhNTDpjb20uYWRvYmUueG1wAAAAAAA8eDp4bXBtZXRhIHhtbG5zOng9ImFkb2JlOm5zOm1ldGEvIiB4OnhtcHRrPSJYTVAgQ29yZSA2LjAuMCI+CiAgIDxyZGY6UkRGIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyI+CiAgICAgIDxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PSIiCiAgICAgICAgICAgIHhtbG5zOmV4aWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20vZXhpZi8xLjAvIj4KICAgICAgICAgPGV4aWY6Q29sb3JTcGFjZT4xPC9leGlmOkNvbG9yU3BhY2U+CiAgICAgICAgIDxleGlmOlBpeGVsWERpbWVuc2lvbj43NDA8L2V4aWY6UGl4ZWxYRGltZW5zaW9uPgogICAgICAgICA8ZXhpZjpQaXhlbFlEaW1lbnNpb24+NzQwPC9leGlmOlBpeGVsWURpbWVuc2lvbj4KICAgICAgPC9yZGY6RGVzY3JpcHRpb24+CiAgIDwvcmRmOlJERj4KPC94OnhtcG1ldGE+CjnSgLYAAAMqSURBVDgRY/z//z8DNQATNQwBmTGMDWLBDKOTJ0+t2nnyHxMrJ/O/1AgPRUUliJq3b95OXjHz5Y+3wNjRFVVNjUhiY2eDa0c36P/v78WzDh1lj2ZgY2X49Pb1rI2z2wshqpduXNHIPI/BQJiB6T/Doc1Gp/UsbazgBqEH9v9//378/sfAwsbIycHAzvH/PyNcKdAhjDwcDCxMDEyMDEBh1GTDiJmOjhw7sXTrsTW7TmnIiUyqyWJg+P3//z8lFc3bN6/bpSU7O6tJSkjoCKlmRqWycSC8hjDo7/9/Z86d+/Lpk4GRkTC/wOqNO+t752c4PPz49gwTMwufgNb8Q0q2dnYTa7MYWJnhzoQzEAatnLfwb9dCKVbOo/I8YVM6Pr79vG+Zi4zIZ25RE7afZ968/fn4CWdQ0UUNDZXdu3e/fvuOi5PDxdmZh4cHYhYisF+cuZTHJ8vIJ/DgzkXHmEr+P89WFr45ckUiyuo9w59fs1eye+l8X71sCpuA2v7TDwXFFd6/eX73/uPighx0g6QtjOYdnC/+4/ULPfm9HQ071k6WFD7CxPDu9e0XbKxM378yKksyHd548NHXe5YOwQJi0py8ws9f3sDiNWAkXLl549fPnxrq6tzsHPPmzNRiyhARYW1eJM/MyJDv+IiV8ddDmRUqagY17dP+M3P9+fk1I97fzdUZ3UXACNVV1Xh45/7jm/du3brdseyCtZhehfelb1////rFxMX0K3sBn3ngR09f9ZULJn58/5aFlZWbhw+Lixj+/c/rqZjzezsjJ+u3918dX+gtrp+ydc3kFzc3MjL8l9Dw5pWxL2nqTfPVUVTWcHLzl5aWhJsCZCBi7d/X3/odXlfCfjL+ZfnP8k9zJdPlip3M3KyfvwLT0X8+HrYrV25cXGxiq/n13XuGvR/iixoXIBIrAwMi1hg5WGy59W5t3MnIyfbvxy9bDldmDpAsLzcrxOZ3795zMH4V4WMA8v+++ghK6EhOQrgIKPjr+8/b1279+fuHhYVFVVONjZMdSSXD9+8/Vy+d/uXt9T//2O09E/UNDJFlUQxCliCVjZ5pSdUPVz+MDQIA1aBLiEn9VS4AAAAASUVORK5CYII=';
+      image.width = image.height = 16;
+      image.alt = '';
+      icon.append(image);
+      item.prepend(icon);
+      return true;
+    };
+    const observer = new doc.defaultView.MutationObserver(() => {
+      if (addIcon()) observer.disconnect();
+    });
+    observer.observe(doc.body, {childList: true, subtree: true});
+    if (addIcon()) observer.disconnect();
+    doc.defaultView.setTimeout(() => observer.disconnect(), 1000);
+  };
   Zotero.Reader.registerEventListener('createAnnotationContextMenu', annotationMenuHandler, 'research-canvas@local');
   for (const window of Zotero.getMainWindows()) onMainWindowLoad({window});
 }

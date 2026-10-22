@@ -1,6 +1,6 @@
 {
   "name": "zotero-canvas",
-  "version": "0.39.1",
+  "version": "0.39.3",
   "private": true,
   "scripts": {
     "test": "node --test test/*.test.cjs",
