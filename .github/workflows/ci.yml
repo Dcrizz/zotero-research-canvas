@@ -29,7 +29,8 @@ jobs:
       - run: npm run test:card-ai
       - run: npm run test:objects
       - run: npm run build
+      - run: cp ../research-canvas-*.xpi .
       - uses: actions/upload-artifact@v4
         with:
           name: research-canvas-xpi
-          path: ../research-canvas-*.xpi
+          path: research-canvas-*.xpi

@@ -34,9 +34,15 @@ Semantic search and the Counter/Supporting library workflows additionally need t
 
 AI analyses are text-only and bounded. They send the selected card text and, for library searches, retrieved excerpts to the chosen model. Image pixels and image-only annotations are not analysed. You decide whether to accept each suggestion. The semantic service is an internal integration with the Zotero MCP Plugin and may need updating when that plugin changes.
 
+## Optional appearance integrations
+
+Research Canvas works without the user's other Zotero plugins. If Zotero Style has a custom annotation-colour palette, annotation cards use its saved colour names; otherwise common colours have built-in names and other colours appear as **Custom colour**. If Note Tag Pills is installed, linked notes use its display-only tag styling inside the native note preview; annotation previews use its saved tag colours when available. Without it, tags remain readable with Research Canvas's default styling. The original note content is not changed by these display treatments.
+
 ## Data and exports
 
 Canvas files and snapshots stay in your local Zotero data directory. Source notes and annotations retain Zotero's normal saving and sync. JSON export backs up the editable canvas; SVG, PNG and PDF exports are visual snapshots. Obsidian export writes `.canvas`, Markdown and asset files into a folder you choose inside your vault. It is one-way: edits made in Obsidian do not sync back to Zotero. See [Feature guide](docs/FEATURES.md) for more detail.
+
+Linked cards store Zotero library and item keys. A canvas copied to a different Zotero profile can retain its layout, text and embedded assets, but **Open source**, annotation jumps and live note editing only work when that profile can resolve the same Zotero items. The Obsidian export folder is chosen separately on each computer; Send to Obsidian requires an Obsidian vault on that computer.
 
 ## Build and test
 
