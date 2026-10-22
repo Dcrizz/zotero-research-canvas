@@ -47,3 +47,32 @@ test('comparison matrix repeats each instruction row for every selected source',
   const filled=T.fill(M,board,T.verify(JSON.stringify({entries}),board,sources));
   assert.equal(filled.nodes.length,8);assert.equal(filled.mode,'matrix');assert.ok(filled.nodes.some(n=>n.organization.matrixColumn==='Jones (2023)'));assert.ok(filled.nodes.some(n=>n.organization.matrixColumn==='Smith (2024)'));assert.equal(M.formatGuides(filled).filter(g=>g.kind==='matrix-column').length,2);
 });
+test('numbered cards run in ascending stages and later stages see only verified earlier answers',async()=>{
+  const board=T.builtIn(M,'conceptmap','Ordered concept'),[definition,theory,alternative]=board.nodes;
+  definition.title='1. Definition';alternative.title='2. Alternative view';theory.text='2) Explain the mechanism with evidence.';
+  const stages=T.sequence(board,sources);assert.deepEqual(stages.map(stage=>stage.number),[1,2,null]);
+  assert.deepEqual(stages[1].slots.map(slot=>slot.node.id),[theory.id,alternative.id]);
+  const calls=[],progress=[];
+  const checked=await T.run(board,sources,'algorithmic influence',async request=>{
+    const payload=JSON.parse(request.messages[0].content);calls.push(payload);
+    if(calls.length===1)assert.equal(payload.sequence.earlier.length,0);
+    if(calls.length===2){assert.equal(payload.sequence.step,2);assert.equal(payload.sequence.earlier.length,1);assert.equal(payload.sequence.earlier[0].card,'1. Definition');}
+    if(calls.length===3){assert.equal(payload.sequence.step,'remaining unnumbered cards');assert.equal(payload.sequence.earlier.length,3);}
+    return JSON.stringify({entries:payload.slots.map(slot=>({task:slot.id,source:'s0',passage:'p1',quote:sources[0].passages[0].text,text:'Grounded answer for '+slot.title}))});
+  },step=>progress.push(step));
+  assert.equal(calls.length,3);assert.deepEqual(progress.map(step=>step.number),[1,2,null]);assert.equal(checked.entries.length,board.nodes.length);
+  const filled=T.fill(M,board,checked);assert.equal(filled.nodes[0].title,'1. Definition');assert.match(filled.nodes[0].text,/Grounded answer/);
+});
+test('unnumbered cards keep one request; an out-of-order numbered answer cannot fill an earlier step',async()=>{
+  const board=T.builtIn(M,'evidence','Evidence');assert.deepEqual(T.sequence(board,sources).map(step=>step.number),[null]);
+  let calls=0;await T.run(board,sources,'',async request=>{calls++;const payload=JSON.parse(request.messages[0].content);return JSON.stringify({entries:payload.slots.map(slot=>({task:slot.id,source:'s0',passage:'p1',quote:sources[0].passages[0].text,text:'Grounded answer'}))});});assert.equal(calls,1);
+  board.nodes[0].title='1. Claim';board.nodes[1].title='2. Supporting evidence';
+  await assert.rejects(T.run(board,sources,'',async request=>{const payload=JSON.parse(request.messages[0].content);return JSON.stringify({entries:[{task:board.nodes[1].id,source:'s0',passage:'p1',quote:sources[0].passages[0].text,text:'Wrong step'}]});}),/central template card lacked grounded evidence/);
+  assert.equal(board.templateDraft,true);
+});
+test('numbered comparison rows keep all selected sources within the same step',()=>{
+  const board=T.builtIn(M,'matrix','Comparison');board.nodes[0].title='1. Question';board.nodes[1].title='2. Argument';
+  const stages=T.sequence(board,sources);assert.deepEqual(stages.map(stage=>stage.number),[1,2,null]);
+  assert.equal(stages[0].slots.length,2);assert.deepEqual(stages[0].slots.map(slot=>slot.source),['s0','s1']);
+  assert.equal(stages[2].slots.length,4);
+});

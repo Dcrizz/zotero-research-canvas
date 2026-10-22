@@ -403,13 +403,15 @@ async function startup({rootURI}) {
     await canvasBridge.save(board);await canvasBridge.dashboardOpenBoard(board.id);
     return {id:board.id,claims:checked.claims.length,links:board.edges.length,rejected:checked.rejected,unread:items.length-available.length,passages:available.reduce((count,source)=>count+source.passages.length,0)};
   };
-  canvasBridge.fillTemplate=async(board,focus='')=>{
+  canvasBridge.fillTemplate=async(board,focus='',onProgress=null)=>{
     CanvasModel.validate(board);if(!board.templateDraft)throw Error('Open a template canvas before filling it with AI.');
+    if(onProgress!==null&&typeof onProgress!=='function')throw Error('Invalid template progress callback.');
     const items=Zotero.getMainWindow().ZoteroPane.getSelectedItems();if(items.length<1||items.length>8||items.some(item=>!item.isRegularItem()))throw Error('Select 1–8 regular Zotero sources in the main library pane first.');
     const sources=[];for(const [index,item] of items.entries())sources.push(await synthesisSource(item,index,'',focus));
     const available=sources.filter(source=>source.passages.length);if(!available.length)throw Error('The selected sources have no readable saved notes, annotations or indexed PDF text.');
-    const response=await canvasBridge.connectionAIRequest(CanvasTemplates.prompt(board,available,focus),'template-'+Services.uuid.generateUUID());
-    const checked=CanvasTemplates.verify(response.text,board,available);
+    const checked=await CanvasTemplates.run(board,available,focus,async prompt=>{
+      const response=await canvasBridge.connectionAIRequest(prompt,'template-'+Services.uuid.generateUUID());return response.text;
+    },progress=>onProgress?.(progress));
     return {board:CanvasTemplates.fill(CanvasModel,board,checked),filled:checked.entries.length,rejected:checked.rejected,unread:items.length-available.length};
   };
   canvasBridge.dashboardOpenBoard=async id=>{const window=Zotero.getMainWindow(),win=await ensureCanvas(window);await win.CanvasApp.openBoard(id);win.focus();};

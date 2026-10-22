@@ -707,31 +707,36 @@ async function history(direction) {
   const from = direction === 'undo' ? undo : redo, to = direction === 'undo' ? redo : undo;
   if (!from.length) return; to.push(M.clone(board)); board = from.pop(); selection = null; changed(); render(); inspector();
 }
-let templateAction=null;
+let templateAction=null,templateGeneration=0;
 function openTemplateDialog(action){
-  templateAction=action;$('template-dialog-title').textContent=action==='save'?'Save canvas template':'Fill template with AI';
-  $('template-dialog-help').textContent=action==='save'?'Edit the cards and their AI instructions first. This saves a reusable, source-free template for this format.':'Select 1–8 regular Zotero sources in the main library pane. AI will replace each supported instruction with a sourced answer; unsupported branches will be omitted.';
+  templateAction=action;templateGeneration++;$('template-dialog-title').textContent=action==='save'?'Save canvas template':'Fill template with AI';
+  $('template-dialog-help').textContent=action==='save'?'Edit the cards and their AI instructions first. This saves a reusable, source-free template for this format.':'Select 1–8 regular Zotero sources. Cards headed 1. Definition, 2. Alternative view, and so on run in number order; unnumbered cards run together afterward. Each numbered step makes one AI request.';
   $('template-name-row').hidden=action!=='save';$('template-focus-row').hidden=action!=='fill';$('template-default-row').hidden=action!=='save';
   $('template-confirm').textContent=action==='save'?'Save template':'Fill cards';$('template-name').required=action==='save';
   $('template-name').value='';$('template-focus').value='';$('template-default').checked=false;$('template-dialog-status').textContent='';$('template-dialog-shade').hidden=false;
   (action==='save'?$('template-name'):$('template-focus')).focus();
 }
-function closeTemplateDialog(){$('template-dialog-shade').hidden=true;templateAction=null;}
+function closeTemplateDialog(){templateGeneration++;$('template-dialog-shade').hidden=true;templateAction=null;}
 async function submitTemplateDialog(){
-  const action=templateAction,active=board;if(!action)return;
+  const action=templateAction,active=board,generation=templateGeneration;if(!action)return;
   $('template-confirm').disabled=true;$('template-dialog-status').textContent=action==='fill'?'Reading selected sources and checking excerpts…':'';
   try{
-    finishLabel();await saveInlineNotes();await flush();if(board!==active)throw Error('The canvas changed. Reopen the template action.');
+    finishLabel();await saveInlineNotes();await flush();if(board!==active)throw Error('The canvas changed. Reopen the template action.');const activeRevision=revision;
     if(action==='save'){
       if(!bridge.saveTemplate)throw Error('Template storage is unavailable.');
       const template=CanvasTemplates.capture(M,board,$('template-name').value);
       await bridge.saveTemplate(template,$('template-default').checked);closeTemplateDialog();status('Template saved for '+CanvasFormats.modes[board.mode]);
     }else{
-      const result=await bridge.fillTemplate(M.clone(board),$('template-focus').value);
-      if(board!==active)throw Error('The canvas changed during AI generation. No cards were replaced.');
+      const result=await bridge.fillTemplate(M.clone(board),$('template-focus').value,step=>{
+        if(generation!==templateGeneration)throw Error('Template fill dismissed.');
+        if(board!==active||revision!==activeRevision)throw Error('The canvas changed during AI generation. No cards were replaced.');
+        $('template-dialog-status').textContent='Analysing '+(step.number===null?'unnumbered cards':'step '+step.number)+' ('+step.index+' of '+step.total+')…';
+      });
+      if(generation!==templateGeneration)return;
+      if(board!==active||revision!==activeRevision)throw Error('The canvas changed during AI generation. No cards were replaced.');
       checkpoint();board=M.validate(result.board);changed();render();fit();await flush();closeTemplateDialog();status(result.filled+' template cards filled; '+result.rejected+' unsupported AI entries excluded.');
     }
-  }catch(error){$('template-dialog-status').textContent=error.message;report(error);}
+  }catch(error){if(generation===templateGeneration){$('template-dialog-status').textContent=error.message;report(error);}}
   finally{$('template-confirm').disabled=false;}
 }
 function bind() {
