@@ -46,6 +46,7 @@ async function startup({rootURI}) {
       if(record)navigation.visit(route);updateNavigation();return route;
     }finally{navigating=false;}
   }
+  const sourceListingCache=new Map();
   const connectionJobs=new Map();
   const credentialOrigin='https://research-canvas.invalid',credentialRealm='Research Canvas AI';
   const savedAIKeys=()=>Services.logins.findLogins(credentialOrigin,null,credentialRealm).filter(login=>login.username==='research-canvas');
@@ -393,14 +394,28 @@ async function startup({rootURI}) {
     async sourceCatalog(){
       return Zotero.Libraries.getAll().map(l=>({id:l.libraryID,name:l.name,collections:Zotero.Collections.getByLibrary(l.libraryID,true).map(c=>({id:c.id,name:c.name,parentID:c.parentID||null}))}));
     },
-    async sourceItems({libraryID,collectionID=null,query='',offset=0}){
-      if(!Number.isSafeInteger(libraryID)||!Zotero.Libraries.get(libraryID)||typeof query!=='string'||query.length>300||!Number.isSafeInteger(offset)||offset<0)throw Error('Choose a Zotero library and a valid search.');
-      const search=new Zotero.Search();search.libraryID=libraryID;
-      for(const type of ['attachment','note','annotation'])search.addCondition('itemType','isNot',type);
-      if(collectionID!==null){const collection=Zotero.Collections.getByLibrary(libraryID,true).find(c=>c.id===collectionID);if(!collection)throw Error('The collection is no longer available.');search.addCondition('collection','is',collection.key);}
-      if(query.trim())search.addCondition('quicksearch-titleCreatorYear','contains',query.trim());
-      const ids=(await search.search()).sort((a,b)=>b-a),items=await Zotero.Items.getAsync(ids.slice(offset,offset+80));
-      return {total:ids.length,items:items.filter(i=>i&&!i.deleted&&i.isRegularItem()).map(i=>({id:i.id,title:i.getField('title')||i.key,author:i.getCreators().map(c=>c.lastName||c.name||'').filter(Boolean).join('; '),year:i.getField('date'),type:i.itemType}))};
+    async sourceItems({libraryID,collectionID=null,query='',offset=0,sortBy='creator',sortDirection='asc',session=''}){
+      if(!Number.isSafeInteger(libraryID)||!Zotero.Libraries.get(libraryID)||typeof query!=='string'||query.length>300||!Number.isSafeInteger(offset)||offset<0||!['creator','year','title'].includes(sortBy)||!['asc','desc'].includes(sortDirection)||typeof session!=='string'||session.length>80)throw Error('Choose a Zotero library and a valid search.');
+      const cacheKey=JSON.stringify([libraryID,collectionID,query,sortBy,sortDirection,session]);let listing=session?sourceListingCache.get(cacheKey):null;
+      if(!listing){
+        const search=new Zotero.Search();search.libraryID=libraryID;
+        for(const type of ['attachment','note','annotation'])search.addCondition('itemType','isNot',type);
+        if(collectionID!==null){const collection=Zotero.Collections.getByLibrary(libraryID,true).find(c=>c.id===collectionID);if(!collection)throw Error('The collection is no longer available.');search.addCondition('collection','is',collection.key);}
+        if(query.trim())search.addCondition('quicksearch-titleCreatorYear','contains',query.trim());
+        const items=await Zotero.Items.getAsync(await search.search()),collator=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
+        listing=items.filter(i=>i&&!i.deleted&&i.isRegularItem()).map(item=>({item,id:item.id,title:item.getField('title')||item.key,author:item.getCreators().map(c=>c.lastName||c.name||'').filter(Boolean).join('; '),year:(item.getField('date').match(/\b\d{4}\b/)||[''])[0]}));
+        const field=sortBy==='creator'?'author':sortBy,direction=sortDirection==='desc'?-1:1;
+        listing.sort((a,b)=>direction*(collator.compare(a[field],b[field])||collator.compare(a.title,b.title)||a.id-b.id));
+        if(session){sourceListingCache.set(cacheKey,listing);if(sourceListingCache.size>4)sourceListingCache.delete(sourceListingCache.keys().next().value);}
+      }
+      const page=listing.slice(offset,offset+80),ids=page.map(row=>row.id);if(!ids.length)return {total:listing.length,items:[]};
+      const placeholders=ids.map(()=>'?').join(','),[noteRows,annotationRows]=await Promise.all([
+        Zotero.DB.queryAsync('SELECT n.parentItemID AS sourceID, COUNT(*) AS count FROM itemNotes n WHERE n.parentItemID IN ('+placeholders+') AND n.itemID NOT IN (SELECT itemID FROM deletedItems) GROUP BY n.parentItemID',ids),
+        Zotero.DB.queryAsync('SELECT a.parentItemID AS sourceID, n.color AS colour, COUNT(*) AS count FROM itemAttachments a JOIN itemAnnotations n ON n.parentItemID=a.itemID WHERE a.parentItemID IN ('+placeholders+') AND a.itemID NOT IN (SELECT itemID FROM deletedItems) AND n.itemID NOT IN (SELECT itemID FROM deletedItems) GROUP BY a.parentItemID,n.color',ids)
+      ]);
+      const notes=new Map(noteRows.map(row=>[row.sourceID,row.count])),annotations=new Map(),colours=await Zotero.Tags.getColors(libraryID);
+      for(const row of annotationRows){if(!annotations.has(row.sourceID))annotations.set(row.sourceID,[]);annotations.get(row.sourceID).push({colour:row.colour,count:row.count});}
+      return {total:listing.length,items:page.map(({item,...row})=>({...row,notes:notes.get(row.id)||0,annotations:(annotations.get(row.id)||[]).reduce((sum,value)=>sum+value.count,0),annotationColours:annotations.get(row.id)||[],tags:item.getTags().map(tag=>({name:tag.tag,colour:colours.get(tag.tag)?.color||null}))}))};
     },
     async sourceCards(ids){
       if(!Array.isArray(ids)||!ids.length||ids.length>8||ids.some(id=>!Number.isSafeInteger(id)||id<1))throw Error('Select 1–8 Zotero sources.');
