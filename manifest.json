@@ -1,9 +1,9 @@
 {
   "manifest_version": 2,
-  "name": "Research Canvas",
-  "version": "0.27.0",
+  "name": "Zotero Canvas",
+  "version": "0.28.0",
   "description": "Local freeform canvases and mind maps linked to Zotero items and notes.",
-  "author": "Research Canvas contributors",
+  "author": "Zotero Canvas contributors",
   "icons": {
     "48": "content/icon.png",
     "96": "content/icon.png"

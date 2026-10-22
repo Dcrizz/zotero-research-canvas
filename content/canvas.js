@@ -231,6 +231,11 @@ function loadVisibleNotes() {
     })();
   }
 }
+function renderView() {
+  $('world').style.transform = `translate(${board.view.x}px,${board.view.y}px) scale(${board.view.zoom})`;
+  $('zoom').textContent = Math.round(board.view.zoom * 100) + '%';
+  positionStyles();positionLabelEditor();workspace?.positionFrameMenu();loadVisibleNotes();
+}
 function render() {
   const appearance=board.appearance||CanvasSettings.defaults().canvas;Object.assign($('viewport').style,{backgroundColor:appearance.background,backgroundImage:appearance.showGrid?`radial-gradient(${appearance.gridColour} 1px,transparent 1px)`:'none',backgroundSize:appearance.gridSize+'px '+appearance.gridSize+'px'});
   const positions = M.positions(board);
@@ -268,21 +273,22 @@ function render() {
     $('edges').append(hit);
     if (selection?.id === e.id) {
       for (const [end, node, side] of [['source', a, e.sourceSide || 'right'], ['target', c, e.targetSide || 'left']]) {
-        const p = M.anchor(node, side), handle = svg('circle', {cx: p.x, cy: p.y, r: 8, class: 'endpoint', 'data-end': end, 'data-filter-edge': e.id, role: 'button', 'aria-label': 'Move connector ' + end});
+        const p = M.anchor(node, side), handle = svg('circle', {cx: p.x, cy: p.y, r: 13/board.view.zoom, class: 'endpoint', 'data-end': end, 'data-filter-edge': e.id, role: 'button', 'aria-label': 'Move connector ' + end});
         handle.addEventListener('pointerdown', ev => {
           if (ev.button !== 0) return; ev.preventDefault(); ev.stopPropagation(); hideStyles(); checkpoint();
-          gesture = {type: 'reconnect', id: e.id, end, pointer: ev.pointerId, fixed: M.anchor(end === 'source' ? c : a, end === 'source' ? e.targetSide || 'left' : e.sourceSide || 'right')};
+          gesture = {type: 'reconnect', id: e.id, end, pointer: ev.pointerId, start: point(ev), moved: false, originalHierarchy: e.hierarchy};
           $('viewport').setPointerCapture(ev.pointerId);
-        }); $('handles').append(handle);
+        }); $('handles').append(handle,svg('circle',{cx:p.x,cy:p.y,r:5/board.view.zoom,class:'endpoint-visual'}));
       }
     }
     if(selection?.id===e.id){
       const route=e.routePoints?.length?e.routePoints:[.25,.5,.75].map(t=>{const p=line.getPointAtLength(line.getTotalLength()*t);return {x:p.x,y:p.y};});
-      const addHandle=(p,index,insert=false)=>{const h=svg('rect',{x:p.x-5,y:p.y-5,width:10,height:10,rx:2,class:'route-handle',role:'button','aria-label':insert?'Add connector bend':'Move connector bend','data-route-index':index,'data-edge':e.id});
+      const addHandle=(p,index,insert=false)=>{const size=24/board.view.zoom,h=svg('rect',{x:p.x-size/2,y:p.y-size/2,width:size,height:size,rx:2,class:'route-handle',role:'button','aria-label':insert?'Add connector bend':'Move connector bend','data-route-index':index,'data-edge':e.id});
         h.addEventListener('pointerdown',ev=>{if(ev.button!==0)return;ev.preventDefault();ev.stopPropagation();hideStyles();checkpoint();gesture={type:'route',id:e.id,index,route:M.clone(route),insert,point:{...p},start:point(ev),pointer:ev.pointerId};$('viewport').setPointerCapture(ev.pointerId);});
-        h.addEventListener('dblclick',ev=>{ev.preventDefault();ev.stopPropagation();if(!ev.altKey||insert||!e.routePoints?.length){openLabel(e.id);return;}checkpoint();e.routePoints.splice(index,1);changed();render();});$('handles').append(h);};
+        h.addEventListener('dblclick',ev=>{ev.preventDefault();ev.stopPropagation();if(!ev.altKey||insert||!e.routePoints?.length){openLabel(e.id);return;}checkpoint();e.routePoints.splice(index,1);changed();render();});$('handles').append(h,svg('rect',{x:p.x-4/board.view.zoom,y:p.y-4/board.view.zoom,width:8/board.view.zoom,height:8/board.view.zoom,rx:2,class:'route-handle-visual'}));};
       route.forEach((p,i)=>addHandle(p,i));
       if(e.routePoints?.length){const points=[M.anchor(a,e.sourceSide||'right'),...route,M.anchor(c,e.targetSide||'left')];for(let i=0;i<points.length-1;i++)addHandle({x:(points[i].x+points[i+1].x)/2,y:(points[i].y+points[i+1].y)/2},i,true);}
+      for(const endpoint of $('handles').querySelectorAll('.endpoint,.endpoint-visual'))$('handles').append(endpoint);
     }
     if (e.label && labelDraft?.id !== e.id) {
       const middle = edgeMiddle(e.id), measure=document.createElement('canvas').getContext('2d');measure.font="14px 'Avenir Next', 'Segoe UI', sans-serif";const width=Math.min(360,Math.max(60,Math.ceil(measure.measureText(e.label).width)+30));
@@ -296,10 +302,12 @@ function render() {
   for (const n of nodes.values()) {
     const card = existingCards.get(n.id) || html('article'); card.className = 'card' + (selection?.id === n.id ? ' selected' : ''); card.dataset.id = n.id;card.ondblclick=null;
     let preview = n.kind === 'note' && bridge.nativeNotes ? card.querySelector('.note-preview') : null;
+    const annotationFrame = n.kind === 'annotation' ? card.querySelector('.annotation-frame') : null;
+    const objectImage = n.objectType && n.objectType !== 'file' ? card.querySelector('.object-body') : null;
+    const canvasBody = n.kind === 'canvas' ? card.querySelector('.body') : null;
     if (preview && preview.dataset.source !== `${n.link.libraryID}/${n.link.key}`) { preview.remove(); preview = null; }
-    // Keep native iframe documents attached while moving/resizing or selecting.
-    // Reparenting an iframe discards its editor, scroll position and decorations.
-    for (const child of [...card.children]) if (child !== preview && !(n.objectType==='file'&&child.classList.contains('file-preview'))) child.remove();
+    // Moving an iframe out of the DOM reloads its document and visibly flashes.
+    for (const child of [...card.children]) if (child !== preview && child !== annotationFrame && child !== objectImage && child !== canvasBody && !(n.objectType==='file'&&child.classList.contains('file-preview'))) child.remove();
     card.tabIndex = 0; card.setAttribute('aria-label', n.title);
     Object.assign(card.style, {left: n.x + 'px', top: n.y + 'px', width: n.width + 'px', height: n.height + 'px', backgroundColor: n.colour, borderColor: n.border, borderWidth: n.borderWidth + 'px', fontSize: n.fontSize + 'px'});
     card.style.backgroundColor = n.fillMode === 'outline' ? 'transparent' : n.colour + (n.fillMode === 'partial' ? '59' : ''); card.style.borderStyle = n.pattern || 'solid';
@@ -333,20 +341,19 @@ function render() {
         const download=html('a');download.className='linked file-download';download.textContent='Save file';download.download=d.name;download.href='data:'+d.mime+';base64,'+d.base64;body.append(download);card.append(body);
       }
     } else if (n.objectType) {
-      card.classList.add('object-card','object-'+n.objectType);card.style.backgroundColor='transparent';card.style.borderWidth='0';const image=html('img');image.className='object-body';image.alt=n.title;image.draggable=false;image.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(CanvasObjects.svg(n));image.ondblclick=card.ondblclick=ev=>{if(ev.target.closest('button'))return;ev.stopPropagation();if(n.objectType==='table')objectTools.editTable(n.id);else if(n.objectType!=='library'){openStyles('node',n.id);$('style-toolbar').querySelector('[data-tool=text]').click();$('text').focus();}};card.append(cardHeading,image);
+      card.classList.add('object-card','object-'+n.objectType);card.style.backgroundColor='transparent';card.style.borderWidth='0';const image=objectImage||html('img');image.className='object-body';image.alt=n.title;image.draggable=false;const source='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(CanvasObjects.svg(n));if(image.src!==source)image.src=source;image.ondblclick=card.ondblclick=ev=>{if(ev.target.closest('button'))return;ev.stopPropagation();if(n.objectType==='table')objectTools.editTable(n.id);else if(n.objectType!=='library'){openStyles('node',n.id);$('style-toolbar').querySelector('[data-tool=text]').click();$('text').focus();}};if(objectImage)card.insertBefore(cardHeading,image);else card.append(cardHeading,image);
     } else if (n.kind === 'annotation') {
-      const frame = html('iframe'); frame.className = 'annotation-frame'; frame.title = 'Annotation preview: ' + n.title;
+      const frame = annotationFrame || html('iframe'); frame.className = 'annotation-frame'; frame.title = 'Annotation preview: ' + n.title;
       frame.setAttribute('sandbox', '');
-      // Isolate imported templates from the privileged canvas, including imported boards.
-      frame.srcdoc = annotationDocument(n);
-      card.append(cardHeading, frame);
+      if(frame._canvasSourceHTML!==n.annotationHTML||frame._canvasAppearance!==annotationAppearance){frame.srcdoc=annotationDocument(n);frame._canvasSourceHTML=n.annotationHTML;frame._canvasAppearance=annotationAppearance;}
+      if(annotationFrame)card.insertBefore(cardHeading,frame);else card.append(cardHeading,frame);
       if(n.annotationColour){const pill=html('span');pill.className='annotation-colour-pill';pill.textContent=n.annotationColourName || 'Highlight colour';pill.style.backgroundColor=n.annotationColour;pill.style.color=M.labelPalette(n.annotationColour).foreground;card.append(pill);}
       if (n.sourceUnavailable) { const warning = html('small'); warning.className = 'source-warning'; warning.textContent = 'Source unavailable; showing saved preview'; card.append(warning); }
     } else if(n.kind==='canvas'){
-      card.classList.add('canvas-card');card.append(cardHeading,body);body.textContent=n.embedded?'Loading canvas preview...':'Linked canvas';
+      card.classList.add('canvas-card');const displayBody=canvasBody||body;if(canvasBody)card.insertBefore(cardHeading,displayBody);else card.append(cardHeading,displayBody);if(!canvasBody)displayBody.textContent=n.embedded?'Loading canvas preview...':'Linked canvas';
       const open=html('button');open.className='linked open-canvas';open.textContent='Open canvas';open.onclick=act(()=>switchBoard(n.canvasID));card.append(open);
-      const refresh=html('button');refresh.className='linked';refresh.textContent='Refresh preview';refresh.onclick=act(()=>drawCanvasPreview(n,body));if(n.embedded)card.append(refresh);
-      drawCanvasPreview(n,body).catch(report);
+      const refresh=html('button');refresh.className='linked';refresh.textContent='Refresh preview';refresh.onclick=act(()=>drawCanvasPreview(n,displayBody));if(n.embedded)card.append(refresh);
+      drawCanvasPreview(n,displayBody).catch(report);
     } else card.append(cardHeading, body);
     const ai=html('button');ai.type='button';ai.className='linked card-ai-toggle';ai.title='AI actions';ai.hidden=['library','file'].includes(n.objectType);ai.setAttribute('aria-label','AI actions for '+n.title);ai.setAttribute('aria-haspopup','menu');ai.setAttribute('aria-expanded',String(aiMenuID===n.id));
     const aiIcon=svg('svg',{viewBox:'0 0 24 24',width:20,height:20,'aria-hidden':'true'});aiIcon.append(svg('path',{d:'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z M20 3v4 M18 5h4',fill:'none',stroke:'currentColor','stroke-width':1.7,'stroke-linejoin':'round'}));ai.append(aiIcon);
@@ -757,10 +764,10 @@ function bind() {
   function setZoom(value) {
     const cx=$('viewport').clientWidth/2,cy=$('viewport').clientHeight/2,old=board.view.zoom;
     const x=(cx-board.view.x)/old,y=(cy-board.view.y)/old;
-    board.view.zoom=Math.max(.2,Math.min(3,value));board.view.x=cx-x*board.view.zoom;board.view.y=cy-y*board.view.zoom;changed();render();
+    board.view.zoom=Math.max(.2,Math.min(3,value));board.view.x=cx-x*board.view.zoom;board.view.y=cy-y*board.view.zoom;changed();renderView();
   }
   $('zoom-in').onclick = () => setZoom(board.view.zoom*1.2); $('zoom-out').onclick = () => setZoom(board.view.zoom/1.2);$('zoom').onclick=()=>setZoom(1);
-  $('zoom-centre').onclick=()=>{const ps=M.positions(board),rects=board.nodes.map(n=>({...n,...ps.get(n.id)}));for(const f of board.frames||[])rects.push(workspace?.frameRect(f)||f);rects.push(...M.extraRects(board));if(!rects.length)return;const r=M.bounds(rects,0);board.view.x=$('viewport').clientWidth/2-(r.x+r.width/2)*board.view.zoom;board.view.y=$('viewport').clientHeight/2-(r.y+r.height/2)*board.view.zoom;changed();render();};
+  $('zoom-centre').onclick=()=>{const ps=M.positions(board),rects=board.nodes.map(n=>({...n,...ps.get(n.id)}));for(const f of board.frames||[])rects.push(workspace?.frameRect(f)||f);rects.push(...M.extraRects(board));if(!rects.length)return;const r=M.bounds(rects,0);board.view.x=$('viewport').clientWidth/2-(r.x+r.width/2)*board.view.zoom;board.view.y=$('viewport').clientHeight/2-(r.y+r.height/2)*board.view.zoom;changed();renderView();};
   for(const type of ['pointerdown','dblclick','wheel'])$('canvas-zoom').addEventListener(type,ev=>ev.stopPropagation());
   $('boards').onchange = act(async () => { try { await switchBoard($('boards').value); } catch (error) { $('boards').value = board.id; throw error; } });
   $('new').onclick = act(() => explorer.create());
@@ -814,10 +821,11 @@ function bind() {
   $('viewport').addEventListener('pointermove', ev => {
     if (!gesture) return; const g = gesture, p = point(ev), n = board.nodes.find(n => n.id === g.id);
     if(g.type==='route'&&(g.moved||Math.hypot(p.x-g.start.x,p.y-g.start.y)*board.view.zoom>3)){const edge=board.edges.find(e=>e.id===g.id);if(!g.moved){if(!edge.routePoints?.length)edge.routePoints=M.clone(g.route);if(g.insert)edge.routePoints.splice(g.index,0,g.point);g.moved=true;}edge.routePoints[g.index]={x:p.x,y:p.y};render();}
-    if (g.type === 'pan') { board.view.x = g.x + ev.clientX - g.sx; board.view.y = g.y + ev.clientY - g.sy; render(); }
+    if (g.type === 'pan') { board.view.x = g.x + ev.clientX - g.sx; board.view.y = g.y + ev.clientY - g.sy; renderView(); }
     if (g.type === 'move') {if(objectTap&&Math.hypot(ev.clientX-objectTap.x,ev.clientY-objectTap.y)>7)objectTap=null; n.x = g.x + p.x - g.start.x; n.y = g.y + p.y - g.start.y; render(); }
     if (g.type === 'resize') { const next = M.resize(g, g.direction, p.x - g.start.x, p.y - g.start.y); n.width = next.width; n.height = next.height; if (board.mode === 'canvas') { n.x = next.x; n.y = next.y; } render(); }
-    if (g.type === 'connect' || g.type === 'reconnect') { const origin = g.type === 'reconnect' ? g.fixed : M.anchor(g, g.side); $('edges').querySelector('.preview')?.remove(); $('edges').append(svg('path', {class: 'preview', d: `M ${origin.x} ${origin.y} L ${p.x} ${p.y}`})); }
+    if(g.type==='reconnect'&&(g.moved||Math.hypot(p.x-g.start.x,p.y-g.start.y)*board.view.zoom>3)){const edge=board.edges.find(e=>e.id===g.id);if(edge){g.moved=true;edge[g.end]=null;edge[g.end+'Point']={x:p.x,y:p.y};render();}}
+    if(g.type==='connect'){const source=board.nodes.find(n=>n.id===g.id),position=M.positions(board).get(g.id),from={...source,...position},to={x:p.x,y:p.y,width:0,height:0};$('edges').querySelector('.preview')?.remove();$('edges').append(svg('path',{class:'preview',d:M.path(from,to,'elbow',g.side,g.side==='left'?'right':g.side==='top'?'bottom':g.side==='bottom'?'top':'left')}));}
   });
   function endGesture(ev) {
     if (!gesture) return;
@@ -825,6 +833,7 @@ function bind() {
     if(ev.type==='pointercancel'){if(g.type!=='pan'){const previous=undo.pop();if(previous)board=M.clone(previous);}if($('viewport').hasPointerCapture(g.pointer))$('viewport').releasePointerCapture(g.pointer);render();return;}
     if(g.type==='move'&&Math.hypot(point(ev).x-g.start.x,point(ev).y-g.start.y)<2){undo.pop();if($('viewport').hasPointerCapture(g.pointer))$('viewport').releasePointerCapture(g.pointer);return;}
     if(g.type==='route'&&!g.moved){undo.pop();if($('viewport').hasPointerCapture(g.pointer))$('viewport').releasePointerCapture(g.pointer);return;}
+    if(g.type==='reconnect'&&!g.moved&&Math.hypot(point(ev).x-g.start.x,point(ev).y-g.start.y)*board.view.zoom<3){undo.pop();if($('viewport').hasPointerCapture(g.pointer))$('viewport').releasePointerCapture(g.pointer);return;}
     if (g.type === 'connect' || g.type === 'reconnect') {
       // Handles sit above ports; ignore them while finding the drop destination.
       $('handles').style.display = 'none';
@@ -835,12 +844,12 @@ function bind() {
       const edge = g.type === 'reconnect' && board.edges.find(e => e.id === g.id);
       const other = edge ? edge[g.end === 'source' ? 'target' : 'source'] : g.id;
       if (node && target !== other && ev.type !== 'pointercancel') {
-        if (edge) { edge[g.end] = target; delete edge[g.end+'Point']; edge[g.end + 'Side'] = side; connected = edge; }
+        if (edge) { edge[g.end] = target; delete edge[g.end+'Point']; edge[g.end + 'Side'] = side;edge.hierarchy=g.originalHierarchy; connected = edge; }
         else { const created = M.edge(g.id, target); created.sourceSide = g.side; created.targetSide = side; board.edges.push(created); connected = created; }
       } else if(ev.type!=='pointercancel'&&!node){
         if(g.type==='connect'&&Math.hypot(p.x-g.start.x,p.y-g.start.y)*board.view.zoom<6){createChild(board.nodes.find(n=>n.id===g.id),g.side);}
         else if(edge){edge[g.end]=null;edge[g.end+'Point']={x:p.x,y:p.y};edge.hierarchy=false;}
-        else{const created=M.edge(g.id,null);created.sourceSide=g.side;created.targetPoint={x:p.x,y:p.y};created.hierarchy=false;board.edges.push(created);selection={kind:'edge',id:created.id};}
+        else{const created=M.edge(g.id,null);created.sourceSide=g.side;created.targetPoint={x:p.x,y:p.y};created.hierarchy=false;created.style='elbow';board.edges.push(created);selection={kind:'edge',id:created.id};}
       } else if(ev.type!=='pointercancel'&&g.type==='connect'&&target===g.id&&Math.hypot(p.x-g.start.x,p.y-g.start.y)*board.view.zoom<6){createChild(board.nodes.find(n=>n.id===g.id),g.side);}else undo.pop();
     }
     if ($('viewport').hasPointerCapture(g.pointer)) $('viewport').releasePointerCapture(g.pointer);
@@ -865,7 +874,7 @@ function bind() {
       board.view.zoom = Math.max(.2, Math.min(3, board.view.zoom * Math.exp(-ev.deltaY * .004)));
       board.view.x = ev.clientX - r.left - p.x * board.view.zoom; board.view.y = ev.clientY - r.top - p.y * board.view.zoom;
     } else { board.view.x -= ev.deltaX; board.view.y -= ev.deltaY; }
-    changed(); render();
+    changed(); renderView();
   }, {passive: false});
   window.addEventListener('keydown', ev => {
     if(ev.key==='Escape'&&aiMenuID){const id=aiMenuID;aiMenuID=null;render();[...$('cards').children].find(c=>c.dataset.id===id)?.querySelector('.card-ai-toggle')?.focus({preventScroll:true});ev.preventDefault();return;}

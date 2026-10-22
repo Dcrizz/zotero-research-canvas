@@ -205,11 +205,11 @@ window.CanvasWorkspace = function (ctx) {
     const allNodes=boards.flatMap(b=>b.nodes);if(allNodes.length>20000)throw Error('Export up to 20,000 cards at a time.');
     if(ctx.bridge.refresh){const annotations=allNodes.filter(n=>n.kind==='annotation'&&n.annotationKey);for(let i=0;i<annotations.length;i+=50){const batch=annotations.slice(i,i+50),sources=await ctx.bridge.refresh(batch.map(n=>({...n.link,annotationKey:n.annotationKey})));for(let j=0;j<batch.length;j++){const source=sources[j];if(source.missing)batch[j].sourceUnavailable=true;else for(const key of ['title','text','annotationHTML','annotationColour','annotationColourName'])if(source[key]!==undefined)batch[j][key]=source[key];}}}
     const noteHTML=ctx.bridge.exportNotes?await ctx.bridge.exportNotes(allNodes):{},sourceLinks=ctx.bridge.sourceLinks?await ctx.bridge.sourceLinks(allNodes):{};
-    const prefix='Research Canvas/'+CanvasObsidian.safeName(getBoard().title)+'-'+new Date().toISOString().replace(/[:.]/g,'-')+'-'+crypto.randomUUID().slice(0,8);
+    const prefix='Zotero Canvas/'+CanvasObsidian.safeName(getBoard().title)+'-'+new Date().toISOString().replace(/[:.]/g,'-')+'-'+crypto.randomUUID().slice(0,8);
     return CanvasObsidian.createBundle(boards,{prefix,noteHTML,sourceLinks});
   }
   button('Send to Obsidian',async()=>{if(!ctx.bridge.sendToObsidian)throw Error('Send to Obsidian is available in the installed Zotero plugin.');ctx.status('Preparing Obsidian canvas...');const bundle=await obsidianBundle(),result=await ctx.bridge.sendToObsidian(bundle);ctx.status(result===false?'Obsidian export cancelled':'Sent '+bundle.canvases+' canvas'+(bundle.canvases===1?'':'es')+' to Obsidian'+(bundle.warnings.length?' · see Export details for style differences':''));},exportPanel).id='send-obsidian';
-  if(ctx.bridge.openSettings)button('Research Canvas settings',()=>ctx.bridge.openSettings(),exportPanel).id='canvas-settings';
+  if(ctx.bridge.openSettings)button('Zotero Canvas settings',()=>ctx.bridge.openSettings(),exportPanel).id='canvas-settings';
   const history=element('div');history.id='history-list';exportPanel.append(history);
   button('Version history',async()=>{
     await ctx.flush();history.replaceChildren();if(!ctx.bridge.listSnapshots)throw Error('Version history is available in the installed Zotero plugin.');
@@ -242,5 +242,5 @@ window.CanvasWorkspace = function (ctx) {
     if (!menu.hidden) positionFrameMenu();
   }
   function openAI(id,action){const node=getBoard().nodes.find(n=>n.id===id);if(!node||node.kind==='canvas')throw Error('Choose a readable card for AI analysis.');select('node',id);if(action==='connections'){document.querySelector('#counterexample-panel [aria-label="Close counterexample search"]').click();connectionPanel.open(id);}else{document.querySelector('#connection-panel [aria-label="Close suggested connections"]').click();counterPanel.open(action==='support'?'support':'counterexample');}}
-  return {endSelection(){selecting=false;multiple.clear();updateSelectionMode();redraw();},openAI, render, frameRect, currentFrame, createFrame, contained, matches, visualTag, cardPointerDown, exportData, obsidianBundle, showConnectionEvidence:edge=>connectionPanel.evidence(edge),showCounterexampleEvidence:node=>counterPanel.evidence(node)};
+  return {endSelection(){selecting=false;multiple.clear();updateSelectionMode();redraw();},openAI, render, positionFrameMenu, frameRect, currentFrame, createFrame, contained, matches, visualTag, cardPointerDown, exportData, obsidianBundle, showConnectionEvidence:edge=>connectionPanel.evidence(edge),showCounterexampleEvidence:node=>counterPanel.evidence(node)};
 };

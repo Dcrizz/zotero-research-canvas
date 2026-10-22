@@ -1,5 +1,6 @@
 var chromeHandle;
 var canvasWindow;
+var dashboardWindow;
 var canvasBridge;
 var canvasObservers = new Set();
 var menuCleanups = [];
@@ -96,8 +97,8 @@ async function startup({rootURI}) {
     async connectionAIRequest(turn,jobID){
       const settings=await this.getSettings();
       if(settings.api.provider==='openai-compatible'){
-        if(!settings.api.model)throw Error('Set an AI model in Research Canvas settings first.');
-        const key=readAIKey();if(!key)throw Error('Save an AI API key in Research Canvas settings first.');
+        if(!settings.api.model)throw Error('Set an AI model in Zotero Canvas settings first.');
+        const key=readAIKey();if(!key)throw Error('Save an AI API key in Zotero Canvas settings first.');
         const state={cancelled:false,xhr:null};connectionJobs.set(jobID,state);
         try{const request=CanvasAI.request({endpoint:settings.api.endpoint,model:settings.api.model,key,turn});state.xhr=request.xhr;const result=await request.promise;if(state.cancelled)throw Error('Connection analysis cancelled.');return result;}finally{connectionJobs.delete(jobID);}
       }
@@ -119,7 +120,7 @@ async function startup({rootURI}) {
     async writeObsidianBundle(bundle,destination){
       if(!bundle||!Array.isArray(bundle.files)||bundle.files.length>50000||!bundle.files.length||typeof bundle.entry!=='string')throw Error('Invalid Obsidian export.');
       const entryParts=bundle.entry.split('/'),root=entryParts.slice(0,2).join('/');
-      if(entryParts.length<4||entryParts[0]!=='Research Canvas'||!entryParts[1])throw Error('Invalid Obsidian export folder.');
+      if(entryParts.length<4||!['Research Canvas','Zotero Canvas'].includes(entryParts[0])||!entryParts[1])throw Error('Invalid Obsidian export folder.');
       const paths=new Set();let size=0;
       for(const f of bundle.files){if(typeof f.path!=='string'||!f.path.startsWith(root+'/')||f.path.split('/').some(p=>!p||p==='.'||p==='..'||/[\\\x00]/.test(p))||paths.has(f.path)||(typeof f.text==='string')===(typeof f.base64==='string'))throw Error('Invalid Obsidian export file.');paths.add(f.path);size+=(f.text??f.base64).length;if(f.base64&&!/^[A-Za-z0-9+/=\r\n]+$/.test(f.base64))throw Error('Invalid exported image.');}
       if(size>300000000||!paths.has(bundle.entry))throw Error('Obsidian export is too large or missing its canvas.');
@@ -131,7 +132,7 @@ async function startup({rootURI}) {
     async sendToObsidian(bundle){
       const settings=await this.getSettings();let path=settings.obsidian.path;
       if(!path){path=await this.chooseObsidianDirectory();if(!path)return false;settings.obsidian.path=path;}
-      let vault=path;for(let i=0;i<60;i++){if(await IOUtils.exists(PathUtils.join(vault,'.obsidian')))break;const parent=PathUtils.parent(vault);if(parent===vault||i===59)throw Error('Choose an export folder inside an Obsidian vault. Set it in Zotero Settings → Research Canvas.');vault=parent;}
+      let vault=path;for(let i=0;i<60;i++){if(await IOUtils.exists(PathUtils.join(vault,'.obsidian')))break;const parent=PathUtils.parent(vault);if(parent===vault||i===59)throw Error('Choose an export folder inside an Obsidian vault. Set it in Zotero Settings → Zotero Canvas.');vault=parent;}
       const relative=path.slice(vault.length).replace(/\\/g,'/').replace(/^\/+|\/+$/g,'');if(relative){const root=bundle.entry.split('/').slice(0,2).join('/')+'/',encodedRoot=encodeURI(root),rebase=text=>text.split(encodedRoot).join(encodeURI(relative)+'/'+encodedRoot);bundle={...bundle,files:bundle.files.map(f=>{if(typeof f.text!=='string')return f;if(f.path.endsWith('.canvas')){const data=JSON.parse(f.text);for(const n of data.nodes){if(n.file?.startsWith(root))n.file=relative+'/'+n.file;if(n.text)n.text=rebase(n.text);}return {...f,text:JSON.stringify(data,null,2)};}return {...f,text:rebase(f.text)};})};}
       const entry=await this.writeObsidianBundle(bundle,path);await this.saveSettings(settings);
       if(settings.obsidian.openAfterExport)Zotero.launchURL('obsidian://open?path='+encodeURIComponent(entry));return {path:entry};
@@ -142,7 +143,7 @@ async function startup({rootURI}) {
       const result = [];
       for (const p of await IOUtils.getChildren(directory)) {
         if (!p.endsWith('.json')) continue;
-        try { const b = CanvasModel.validate(await IOUtils.readJSON(p)); result.push({id: b.id, title: b.title}); }
+        try { const b = CanvasModel.validate(await IOUtils.readJSON(p)); result.push({id: b.id, title: b.title, modified: (await IOUtils.stat(p)).lastModified}); }
         catch (error) { Zotero.logError(error); throw Error('Cannot read board ' + p + '. It has been preserved. ' + error.message); }
       }
       const index=await this.libraryState();return result.filter(b=>includeTrash||!index.boards[b.id]?.trashedAt).sort((a, b) => a.title.localeCompare(b.title));
@@ -336,9 +337,21 @@ async function startup({rootURI}) {
     }
   };
   Object.assign(canvasBridge,CanvasCounterexampleLibrary(canvasBridge));
+  canvasBridge.dashboardOpenBoard=async id=>{const window=Zotero.getMainWindow(),win=await ensureCanvas(window);await win.CanvasApp.openBoard(id);win.focus();};
+  canvasBridge.dashboardCreateBoard=async(title,mode,folderID=null)=>{
+    if(!['canvas','mindmap'].includes(mode)||typeof title!=='string'||!title.trim()||title.length>200)throw Error('Invalid canvas details.');
+    if(folderID!==null&&!(await canvasBridge.libraryState()).folders.some(f=>f.id===folderID))throw Error('Folder unavailable.');
+    const board=CanvasModel.board(title.trim());board.mode=mode;await canvasBridge.save(board);
+    if(folderID)await canvasBridge.organise({op:'moveBoard',id:board.id,folderID});
+    await canvasBridge.dashboardOpenBoard(board.id);return board.id;
+  };
+  canvasBridge.dashboardCreateFolder=async(name,parentID=null)=>{
+    if(typeof name!=='string'||!name.trim()||name.length>200)throw Error('Invalid folder name.');
+    return canvasBridge.organise({op:'createFolder',id:Services.uuid.generateUUID().toString().slice(1,-1),name:name.trim(),folderID:parentID});
+  };
   CanvasModel.setDefaults(await canvasBridge.getSettings());
   Zotero.ResearchCanvasPreferences={defaults:()=>CanvasSettings.defaults(),get:()=>canvasBridge.getSettings(),save:value=>canvasBridge.saveSettings(value),choose:window=>canvasBridge.chooseObsidianDirectory(window),hasAIKey:()=>!!readAIKey(),saveAIKey:value=>writeAIKey(value),listLinkTypes:()=>canvasBridge.listMeanings(),saveLinkTypes:values=>canvasBridge.saveMeanings(values),defaultLinkTypes:()=>CanvasModel.defaultMeanings(),linkType:(id,title,edge)=>CanvasModel.meaning(id,title,edge)};
-  await Zotero.PreferencePanes.register({id:'research-canvas-settings',pluginID:'research-canvas@local',src:rootURI+'content/preferences.xhtml',scripts:[rootURI+'content/choices.js',rootURI+'content/preferences.js'],stylesheets:[rootURI+'content/choices.css',rootURI+'content/preferences.css'],label:'Research Canvas',image:rootURI+'content/icon.png'});
+  await Zotero.PreferencePanes.register({id:'research-canvas-settings',pluginID:'research-canvas@local',src:rootURI+'content/preferences.xhtml',scripts:[rootURI+'content/choices.js',rootURI+'content/preferences.js'],stylesheets:[rootURI+'content/choices.css',rootURI+'content/preferences.css'],label:'Zotero Canvas',image:rootURI+'content/icon.png'});
 
   annotationMenuHandler = event => event.append({label: 'Send to Canvas...', onCommand: () => sendToCanvas(Zotero.getMainWindow(), async () => {
     const attachment = await Zotero.Items.getAsync(event.reader.itemID);
@@ -352,7 +365,7 @@ function onMainWindowLoad({window}) {
   const doc = window.document;
   if (doc.getElementById('research-canvas-menu')) return;
   const menu = doc.createXULElement('menuitem');
-  menu.id = 'research-canvas-menu'; menu.setAttribute('label', 'Research Canvas');
+  menu.id = 'research-canvas-menu'; menu.setAttribute('label', 'Zotero Canvas');
   menu.setAttribute('class', 'menuitem-iconic');
   menu.setAttribute('image', 'chrome://research-canvas/content/icon.png');
   menu.addEventListener('command', () => {
@@ -361,6 +374,27 @@ function onMainWindowLoad({window}) {
       'chrome,centerscreen,resizable,width=1250,height=820,dialog=no', canvasBridge);
   });
   doc.getElementById('menu_ToolsPopup').appendChild(menu);
+  const openDashboard=()=>{
+    if(dashboardWindow&&!dashboardWindow.closed){dashboardWindow.focus();dashboardWindow.CanvasDashboard?.refresh();return;}
+    dashboardWindow=window.openDialog('chrome://research-canvas/content/dashboard.xhtml','zotero-canvas-dashboard',
+      'chrome,centerscreen,resizable,width=1320,height=860,dialog=no',canvasBridge);
+  };
+  const addLauncher=nav=>{
+    if(!nav||doc.getElementById('research-canvas-launcher-'+nav.id))return;
+    const holder=doc.createElementNS('http://www.w3.org/1999/xhtml','div');holder.id='research-canvas-launcher-'+nav.id;
+    holder.className='pin-wrapper';holder.setAttribute('role','tab');
+    const button=doc.createXULElement('toolbarbutton');button.className='btn';button.setAttribute('tooltiptext','Zotero Canvas dashboard');
+    button.setAttribute('aria-label','Zotero Canvas dashboard');button.style.cssText='width:28px;height:28px;padding:5px;';
+    const icon=doc.createXULElement('image');icon.className='toolbarbutton-icon';icon.style.cssText='width:18px;height:18px;list-style-image:url("chrome://research-canvas/content/icon.png");';button.append(icon);
+    button.addEventListener('command',openDashboard);holder.append(button);
+    nav.insertBefore(holder,nav.querySelector('#explore-library-button')||nav.querySelector('.divider:last-of-type')||null);
+    menuCleanups.push(()=>holder.remove());
+  };
+  addLauncher(doc.getElementById('zotero-view-item-sidenav'));
+  addLauncher(doc.getElementById('zotero-context-pane-sidenav'));
+  const dashboardMenu=doc.createXULElement('menuitem');dashboardMenu.id='research-canvas-dashboard-menu';dashboardMenu.setAttribute('label','Zotero Canvas dashboard');
+  dashboardMenu.addEventListener('command',openDashboard);doc.getElementById('menu_ToolsPopup').appendChild(dashboardMenu);
+  menuCleanups.push(()=>dashboardMenu.remove());
   for (const [popupID, collection] of [['zotero-itemmenu', false], ['zotero-collectionmenu', true]]) {
     const popup = doc.getElementById(popupID);
     if (!popup) continue;
@@ -395,7 +429,7 @@ async function sendToCanvas(window, getItems) {
   if (!items.length) throw Error('No available items selected.');
   if (items.length > 200) throw Error('Send up to 200 items at a time. Select a smaller group in the item list.');
   const boards = await canvasBridge.list();
-  if (!boards.length) throw Error('Create a board in Research Canvas first.');
+  if (!boards.length) throw Error('Create a board in Zotero Canvas first.');
   const chosen = {value: 0};
   if (!Services.prompt.select(window, 'Send to Canvas', 'Choose a canvas for ' + items.length + ' item(s):', boards.map(b => b.title), chosen)) return;
   const target = boards[chosen.value];
@@ -406,6 +440,7 @@ async function sendToCanvas(window, getItems) {
 }
 function onMainWindowUnload() {}
 async function shutdown() {
+  if(dashboardWindow&&!dashboardWindow.closed)dashboardWindow.close();dashboardWindow=null;
   if (canvasWindow && !canvasWindow.closed) {
     if (canvasWindow.CanvasApp) await canvasWindow.CanvasApp.closeNote();
     if (canvasWindow.CanvasApp) await canvasWindow.CanvasApp.closeInlineNotes();

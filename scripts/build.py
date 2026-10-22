@@ -18,6 +18,6 @@ def archive(path, entries):
     with zipfile.ZipFile(path) as z:
         assert z.testzip() is None
     print(path.name, hashlib.sha256(path.read_bytes()).hexdigest())
-archive(out / f'research-canvas-{version}.xpi', [(f, str(f.relative_to(root))) for f in files])
+archive(out / f'zotero-canvas-{version}.xpi', [(f, str(f.relative_to(root))) for f in files])
 source = [p for p in root.rglob('*') if p.is_file() and not {'.git', 'node_modules', '.impeccable'} & set(p.parts) and not p.name.startswith('.env') and p.name not in {'.DS_Store','VERIFICATION.md'} and not (p.parent.name == 'test' and (p.name.startswith(('live-','native-')) and p.suffix == '.json' or p.name.endswith('-result.json')))]
-archive(out / f'research-canvas-{version}-source.zip', [(f, str(Path(root.name) / f.relative_to(root))) for f in sorted(source)])
+archive(out / f'zotero-canvas-{version}-source.zip', [(f, str(Path(root.name) / f.relative_to(root))) for f in sorted(source)])

@@ -28,9 +28,10 @@ jobs:
       - run: npm run test:layout
       - run: npm run test:card-ai
       - run: npm run test:objects
+      - run: npm run test:dashboard
       - run: npm run build
-      - run: cp ../research-canvas-*.xpi .
+      - run: cp ../zotero-canvas-*.xpi .
       - uses: actions/upload-artifact@v4
         with:
-          name: research-canvas-xpi
-          path: research-canvas-*.xpi
+          name: zotero-canvas-xpi
+          path: zotero-canvas-*.xpi

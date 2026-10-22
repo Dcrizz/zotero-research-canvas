@@ -1,5 +1,5 @@
 <vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul" xmlns:html="http://www.w3.org/1999/xhtml" onload="ResearchCanvasPreferences.init(this)">
-  <groupbox><html:h2>AI access</html:h2><html:p>Choose the existing Awesome GPT connection, or use your own HTTPS Chat Completions provider. AI requests run only when you choose an AI action on a card.</html:p>
+  <groupbox><html:h2>AI access</html:h2><html:p>Configured Awesome GPT works automatically. Otherwise choose Own API key and enter a compatible HTTPS provider below. Semantic search, Counter and Supporting also use an installed Zotero MCP Plugin with its index enabled and built; an AI key alone does not replace that index. AI requests run only when you choose an AI action.</html:p>
     <html:div class="research-canvas-pref-grid">
       <html:label>Provider<html:select id="research-canvas-api-provider"><html:option value="awesome-gpt">Awesome GPT</html:option><html:option value="openai-compatible">Own API key</html:option></html:select></html:label>
       <html:label>Model<html:input id="research-canvas-api-model" type="text" maxlength="120" placeholder="Provider model ID"/></html:label>

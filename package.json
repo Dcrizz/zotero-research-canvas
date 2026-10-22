@@ -1,6 +1,6 @@
 {
-  "name": "zotero-research-canvas",
-  "version": "0.27.0",
+  "name": "zotero-canvas",
+  "version": "0.28.0",
   "private": true,
   "scripts": {
     "test": "node --test test/*.test.cjs",
@@ -14,7 +14,9 @@
     "test:counterexamples": "node test/counterexamples-ui.cjs",
     "test:layout": "node test/layout-ui.cjs",
     "test:card-ai": "node test/card-ai-ui.cjs",
-    "test:objects": "node test/objects-ui.cjs"
+    "test:objects": "node test/objects-ui.cjs",
+    "test:viewport": "node test/viewport-stability-ui.cjs",
+    "test:dashboard": "node test/dashboard-ui.cjs"
   },
   "devDependencies": {
     "playwright": "^1.56.1"

@@ -3,8 +3,8 @@
   const defaults=()=>({version:1,obsidian:{path:'',openAfterExport:true},api:{provider:'awesome-gpt',endpoint:'https://api.openai.com/v1/chat/completions',model:''},card:{colour:'#fff9e8',border:'#a68b54',borderWidth:2,fontSize:15,width:240,height:160,shape:'rounded'},canvas:{background:'#f0f2ed',gridColour:'#bfcac2',gridSize:24,showGrid:true}});
   function validate(value){
     const d=defaults(),s=JSON.parse(JSON.stringify(value));
-    if(s?.version!==1)throw Error('Unsupported Research Canvas settings.');
-    for(const key of ['obsidian','api','card','canvas'])if(s[key]!==undefined&&(!s[key]||typeof s[key]!=='object'||Object.keys(s[key]).some(k=>!Object.hasOwn(d[key],k))))throw Error('Invalid Research Canvas settings.');
+    if(s?.version!==1)throw Error('Unsupported Zotero Canvas settings.');
+    for(const key of ['obsidian','api','card','canvas'])if(s[key]!==undefined&&(!s[key]||typeof s[key]!=='object'||Object.keys(s[key]).some(k=>!Object.hasOwn(d[key],k))))throw Error('Invalid Zotero Canvas settings.');
     const result={version:1,obsidian:{...d.obsidian,...s.obsidian},api:{...d.api,...s.api},card:{...d.card,...s.card},canvas:{...d.canvas,...s.canvas}};
     const color=v=>typeof v==='string'&&/^#[a-f0-9]{6}$/i.test(v),number=(v,min,max)=>Number.isFinite(v)&&v>=min&&v<=max;
     if(typeof result.obsidian.path!=='string'||result.obsidian.path.length>4096||typeof result.obsidian.openAfterExport!=='boolean')throw Error('Invalid Obsidian export settings.');

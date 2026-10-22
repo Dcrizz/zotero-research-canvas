@@ -1,0 +1,28 @@
+const {chromium}=require('playwright'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+(async()=>{
+  const root=path.resolve(__dirname,'../content');
+  const server=http.createServer((req,res)=>{const name=req.url.split('?')[0].slice(1)||'dashboard.xhtml';if(!/^[a-z-]+\.(xhtml|js|css|png)$/.test(name)){res.writeHead(404).end();return;}res.setHeader('Content-Type',name.endsWith('.xhtml')?'application/xhtml+xml':name.endsWith('.css')?'text/css':name.endsWith('.png')?'image/png':'text/javascript');res.end(fs.readFileSync(path.join(root,name)));}).listen(0,'127.0.0.1');
+  await new Promise(resolve=>server.once('listening',resolve));const browser=await chromium.launch({headless:true});
+  try{
+    const page=await browser.newPage({viewport:{width:1320,height:1020}});const errors=[];page.on('pageerror',error=>errors.push(error.message));
+    await page.addInitScript(()=>{
+      const now=Date.now(),boards=[{version:1,id:'board-a',title:'Evidence map',mode:'canvas',nodes:[{id:'one',x:0,y:0,width:240,height:160,title:'Claim',text:'',colour:'#fff9e8',border:'#a68b54',borderWidth:2,fontSize:15,link:null}],edges:[],view:{x:60,y:60,zoom:1}},{version:1,id:'board-b',title:'Reading branches',mode:'mindmap',nodes:[],edges:[],view:{x:60,y:60,zoom:1}}];
+      const rows=[{id:'board-a',title:'Evidence map',modified:now},{id:'board-b',title:'Reading branches',modified:now-40*86400000}];
+      const library={version:1,folders:[{id:'folder-a',name:'Theory',parentID:null,colour:'#287a63'}],boards:{'board-a':{folderID:'folder-a',trashedAt:null}}};
+      window.testDashboard={opened:[],boards,rows,library};
+      window.CanvasDashboardBridge={async list(){return rows.slice();},async libraryState(){return JSON.parse(JSON.stringify(library));},async load(id){return boards.find(b=>b.id===id);},async dashboardOpenBoard(id){window.testDashboard.opened.push(id);},async dashboardCreateFolder(name,parentID){library.folders.push({id:'folder-'+library.folders.length,name,parentID});},async dashboardCreateBoard(name,mode,folderID){const id='board-'+boards.length;boards.push({...boards[1],id,title:name,mode});rows.push({id,title:name,modified:Date.now()});if(folderID)library.boards[id]={folderID,trashedAt:null};window.testDashboard.opened.push(id);}};
+    });
+    await page.goto('http://127.0.0.1:'+server.address().port+'/dashboard.xhtml');
+    await page.locator('.canvas-tile').first().waitFor();assert.equal(await page.locator('.canvas-tile').count(),2);assert.equal(await page.locator('.tile-preview svg').count(),1);
+    await page.screenshot({path:path.resolve(__dirname,'../docs/images/dashboard.png')});
+    assert.equal(await page.locator('.group-title').count(),2);await page.getByRole('button',{name:/Evidence map/}).click();assert.deepEqual(await page.evaluate(()=>testDashboard.opened),['board-a']);
+    await page.getByRole('button',{name:/Theory/}).click();assert.equal(await page.locator('.canvas-tile').count(),1);
+    await page.locator('#new-mindmap').click();await page.locator('#new-name').fill('New argument');await page.locator('#confirm-dialog').click();
+    await page.getByRole('button',{name:/New argument/}).waitFor();assert.equal((await page.evaluate(()=>testDashboard.boards.at(-1))).mode,'mindmap');
+    await page.locator('#new-folder').click();await page.locator('#new-name').fill('Subtopic');await page.locator('#confirm-dialog').click();await page.getByRole('button',{name:/Subtopic/}).waitFor();
+    await page.locator('#all-canvases').click();await page.locator('#list-view').click();assert.equal(await page.locator('#canvases.list').count(),1);
+    await page.locator('#search').fill('reading');assert.equal(await page.locator('.canvas-tile').count(),1);assert.deepEqual(errors,[]);
+    await page.screenshot({path:path.resolve(__dirname,'../../zotero-canvas-dashboard-preview.png')});
+    console.log('Dashboard UI passed: previews, recents, folders, creation, opening, list view and search.');
+  }finally{await browser.close();server.close();}
+})().catch(error=>{console.error(error);process.exitCode=1;});

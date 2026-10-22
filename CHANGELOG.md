@@ -1,5 +1,9 @@
 # Changes
 
+- 0.28.0: Adds a Zotero Canvas dashboard launched from Zotero's right-hand icon rail or Tools menu. Create freeform canvases, mind maps and folders; browse recent canvases with live previews, folder filters, search and grid/list views.
+
+- 0.27.2: Renames the visible plugin to Zotero Canvas while preserving its plugin ID, board storage and saved AI credentials. New Obsidian exports use the new name; existing export bundles remain accepted. Adds sample screenshots and clarifies automatic Awesome GPT/Zotero MCP integrations, the own-key alternative and the separate semantic-index requirement. Panning and zooming retain existing card previews, preventing annotation and embedded-content flicker; annotation previews also stay attached while their cards move. Free connectors default to elbow routing, with larger endpoint/bend hit areas and a live routed line while dragging an endpoint.
+
 - 0.27.0: Reusable link types can be created, edited and removed in Zotero Settings. Supporting and critical links default to `SL ✅` and `❌CL`; connector labels remain fully visible.
 - 0.27.0: Adds an optional HTTPS OpenAI-compatible provider with a user-supplied endpoint, model and API key stored in Zotero's password manager. The existing Awesome GPT provider remains available.
 - 0.27.0: Publishes installation, AI/MCP setup, privacy, testing and contribution guidance for the public release.
