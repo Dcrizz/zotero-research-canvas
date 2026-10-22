@@ -43,7 +43,7 @@ let workspace, explorer, objectTools;
 let customMeanings = [];
 let annotationAppearance={background:'#67b2e0',text:'#ffffff',rules:[]};
 let board, selection = null, undo = [], redo = [], revision = 0, savedRevision = -1;
-let saveTimer, saveChain = Promise.resolve(), gesture = null, ready = false;
+let saveTimer, saveChain = Promise.resolve(), gesture = null, ready = false, attachmentHint = null, hoverAttachment = null;
 let noteFrame = null, noteOpening = false, refreshTimer, stopWatching, refreshJob = null, refreshAgain = false;
 let styleTarget = null, activeTool = null, styleAnchor = null;
 let labelDraft = null;
@@ -252,6 +252,7 @@ function renderView() {
   positionStyles();positionLabelEditor();workspace?.positionFrameMenu();loadVisibleNotes();
 }
 function render() {
+  if(attachmentHint&&!gesture)attachmentHint.hidden=true;
   const appearance=board.appearance||CanvasSettings.defaults().canvas;Object.assign($('viewport').style,{backgroundColor:appearance.background,backgroundImage:appearance.showGrid?`radial-gradient(${appearance.gridColour} 1px,transparent 1px)`:'none',backgroundSize:appearance.gridSize+'px '+appearance.gridSize+'px'});
   const positions = M.positions(board);
   $('world').style.transform = `translate(${board.view.x}px,${board.view.y}px) scale(${board.view.zoom})`;
@@ -304,7 +305,7 @@ function render() {
     $('edges').append(hit);
     if (selection?.id === e.id) {
       for (const [end, node, side] of [['source', a, geometry.sourceSide], ['target', c, geometry.targetSide]]) {
-        const p = M.anchor(node, side), handle = svg('circle', {cx: p.x, cy: p.y, r: 13/board.view.zoom, class: 'endpoint', 'data-end': end, 'data-filter-edge': e.id, role: 'button', 'aria-label': 'Move connector ' + end});
+        const p = M.anchor(node, side,e[end+'Offset']), handle = svg('circle', {cx: p.x, cy: p.y, r: 13/board.view.zoom, class: 'endpoint', 'data-end': end, 'data-filter-edge': e.id, role: 'button', 'aria-label': 'Move connector ' + end});
         handle.addEventListener('pointerdown', ev => {
           if (ev.button !== 0) return; ev.preventDefault(); ev.stopPropagation(); hideStyles(); checkpoint();
           gesture = {type: 'reconnect', id: e.id, end, pointer: ev.pointerId, start: point(ev), moved: false, originalHierarchy: e.hierarchy};
@@ -312,13 +313,19 @@ function render() {
         }); $('handles').append(handle,svg('circle',{cx:p.x,cy:p.y,r:5/board.view.zoom,class:'endpoint-visual'}));
       }
     }
-    if(selection?.id===e.id&&board.mode!=='mindmap'){
+    if(selection?.id===e.id&&board.mode!=='mindmap'&&e.style==='elbow'){
+      const points=M.elbowPoints(a,c,geometry.sourceSide,geometry.targetSide,e.routePoints||[],e.sourceOffset,e.targetOffset);
+      if(points.length===3){const p=points[1],size=24/board.view.zoom,h=svg('rect',{x:p.x-size/2,y:p.y-size/2,width:size,height:size,rx:2,class:'route-handle',role:'button','aria-label':'Move elbow corner','data-edge':e.id});h.addEventListener('pointerdown',ev=>{if(ev.button!==0)return;ev.preventDefault();ev.stopPropagation();hideStyles();checkpoint();gesture={type:'elbow-corner',id:e.id,points:M.clone(points),start:point(ev),pointer:ev.pointerId};$('viewport').setPointerCapture(ev.pointerId);});$('handles').append(h,svg('rect',{x:p.x-4/board.view.zoom,y:p.y-4/board.view.zoom,width:8/board.view.zoom,height:8/board.view.zoom,class:'route-handle-visual'}));}
+      for(let i=1;i<points.length-2;i++){const p=points[i],q=points[i+1],middle={x:(p.x+q.x)/2,y:(p.y+q.y)/2},size=24/board.view.zoom,h=svg('rect',{x:middle.x-size/2,y:middle.y-size/2,width:size,height:size,rx:2,class:'route-handle',role:'button','aria-label':'Move elbow segment','data-edge':e.id,'data-route-index':i});h.addEventListener('pointerdown',ev=>{if(ev.button!==0)return;ev.preventDefault();ev.stopPropagation();hideStyles();checkpoint();gesture={type:'elbow-route',id:e.id,index:i,points:M.clone(points),horizontal:Math.abs(p.y-q.y)<.01,start:point(ev),pointer:ev.pointerId};$('viewport').setPointerCapture(ev.pointerId);});$('handles').append(h,svg('rect',{x:middle.x-4/board.view.zoom,y:middle.y-4/board.view.zoom,width:8/board.view.zoom,height:8/board.view.zoom,rx:2,class:'route-handle-visual'}));}
+      for(const endpoint of $('handles').querySelectorAll('.endpoint,.endpoint-visual'))$('handles').append(endpoint);
+    }
+    if(selection?.id===e.id&&board.mode!=='mindmap'&&e.style!=='elbow'){
       const route=e.routePoints?.length?e.routePoints:[.25,.5,.75].map(t=>{const p=line.getPointAtLength(line.getTotalLength()*t);return {x:p.x,y:p.y};});
       const addHandle=(p,index,insert=false)=>{const size=24/board.view.zoom,h=svg('rect',{x:p.x-size/2,y:p.y-size/2,width:size,height:size,rx:2,class:'route-handle',role:'button','aria-label':insert?'Add connector bend':'Move connector bend','data-route-index':index,'data-edge':e.id});
         h.addEventListener('pointerdown',ev=>{if(ev.button!==0)return;ev.preventDefault();ev.stopPropagation();hideStyles();checkpoint();gesture={type:'route',id:e.id,index,route:M.clone(route),insert,point:{...p},start:point(ev),pointer:ev.pointerId};$('viewport').setPointerCapture(ev.pointerId);});
         h.addEventListener('dblclick',ev=>{ev.preventDefault();ev.stopPropagation();if(!ev.altKey||insert||!e.routePoints?.length){openLabel(e.id);return;}checkpoint();e.routePoints.splice(index,1);changed();render();});$('handles').append(h,svg('rect',{x:p.x-4/board.view.zoom,y:p.y-4/board.view.zoom,width:8/board.view.zoom,height:8/board.view.zoom,rx:2,class:'route-handle-visual'}));};
       route.forEach((p,i)=>addHandle(p,i));
-      if(e.routePoints?.length){const points=[M.anchor(a,e.sourceSide||'right'),...route,M.anchor(c,e.targetSide||'left')];for(let i=0;i<points.length-1;i++)addHandle({x:(points[i].x+points[i+1].x)/2,y:(points[i].y+points[i+1].y)/2},i,true);}
+      if(e.routePoints?.length){const points=[M.anchor(a,e.sourceSide||'right',e.sourceOffset),...route,M.anchor(c,e.targetSide||'left',e.targetOffset)];for(let i=0;i<points.length-1;i++)addHandle({x:(points[i].x+points[i+1].x)/2,y:(points[i].y+points[i+1].y)/2},i,true);}
       for(const endpoint of $('handles').querySelectorAll('.endpoint,.endpoint-visual'))$('handles').append(endpoint);
     }
     if (e.label && labelDraft?.id !== e.id) {
@@ -402,7 +409,7 @@ function render() {
     if(aiMenuID===n.id)card.classList.add('actions-open');
     for(const [action,title]of [['connections','Connections'],['counterexample','Counter'],['support','Supporting']]){const b=html('button');b.type='button';b.className='linked';b.textContent=title;b.dataset.aiAction=action;b.setAttribute('role','menuitem');b.disabled=n.kind==='canvas';if(b.disabled)b.title='Choose a text, note, reference or annotation card';b.onclick=act(()=>{aiMenuID=null;aiMenu.hidden=true;ai.setAttribute('aria-expanded','false');workspace.openAI(n.id,action);});aiMenu.append(b);}
     aiMenu.onkeydown=ev=>{if(!['ArrowDown','ArrowUp','Home','End'].includes(ev.key))return;ev.preventDefault();ev.stopPropagation();const items=[...aiMenu.querySelectorAll('button:not(:disabled)')],i=items.indexOf(document.activeElement);items[ev.key==='Home'?0:ev.key==='End'?items.length-1:(i+(ev.key==='ArrowDown'?1:-1)+items.length)%items.length]?.focus();};card.append(ai,aiMenu);
-    const ports = ['right', 'bottom', 'left', 'top'].map(side => { const port = html('button'); port.className = 'port'; port.dataset.side = side; port.title = 'Click to create a child; drag to connect (' + side + ')'; port.setAttribute('aria-label', 'Connect ' + n.title + ' from ' + side); return port; });
+
     const handles = [['se', 'bottom right'], ['sw', 'bottom left'], ['ne', 'top right'], ['nw', 'top left'], ['n', 'top'], ['e', 'right'], ['s', 'bottom'], ['w', 'left']].map(([direction, label]) => {
       const handle = html('button'); handle.className = 'resize resize-' + direction; handle.dataset.direction = direction; handle.setAttribute('aria-label', 'Resize ' + n.title + ' from ' + label); return handle;
     });
@@ -427,7 +434,7 @@ function render() {
       }
     }
     if (n.link && n.kind !== 'note' && n.kind !== 'annotation') { const link = html('button'); link.className = 'linked'; link.textContent = n.annotationKey ? 'Open source' : Number.isInteger(n.pageIndex)?'Open PDF page':'Open in Zotero'; link.addEventListener('click', act(() => { if (!n.annotationKey) return bridge.open(n.link,n.pageIndex); if (!bridge.openSource) throw Error('Open source is available in the installed Zotero plugin.'); return bridge.openSource(n.link, n.annotationKey); })); card.append(link); }
-    card.append(...ports, ...handles);
+    card.append(...handles);
     card.onpointerdown = ev => {
       if(ev.target.closest('.file-preview')){ev.stopPropagation();return;}
       if (workspace?.cardPointerDown(ev, n)) return;
@@ -750,7 +757,23 @@ async function submitTemplateDialog(){
   }catch(error){if(generation===templateGeneration){$('template-dialog-status').textContent=error.message;report(error);}}
   finally{$('template-confirm').disabled=false;}
 }
+function nearestAttachment(p,exclude=null,tolerance=Infinity){
+  const positions=M.positions(board);let best=null;
+  for(const node of board.nodes){if(node.id===exclude||node.junction)continue;const rect={...node,...positions.get(node.id)},at=M.attachment(rect,p),anchor=M.anchor(rect,at.side,at.offset),distance=Math.hypot(p.x-anchor.x,p.y-anchor.y);if(distance<=tolerance&&(!best||distance<best.distance))best={id:node.id,...at,anchor,distance};}
+  return best;
+}
+function showAttachment(ev){
+  if(!attachmentHint)return;
+  if(!gesture&&selection?.kind==='edge'){const edge=board.edges.find(e=>e.id===selection.id),positions=M.positions(board),nodes=new Map(board.nodes.map(n=>[n.id,{...n,...positions.get(n.id)}]));if(edge){const a=M.endpoint(edge,'source',nodes),b=M.endpoint(edge,'target',nodes),g=M.edgeGeometry(board,edge,a,b),p=point(ev);if([['source',a,g.sourceSide],['target',b,g.targetSide]].some(([end,node,side])=>{const at=M.anchor(node,side,edge[end+'Offset']);return Math.hypot(at.x-p.x,at.y-p.y)<18/board.view.zoom;})){attachmentHint.hidden=true;hoverAttachment=null;return;}}}
+  if(!gesture&&(ev.altKey||ev.target.closest('.resize-se,.resize-sw,.resize-ne,.resize-nw,.linked,button:not(.perimeter-port):not(.resize)'))&&!ev.target.closest('.perimeter-port')){attachmentHint.hidden=true;return;}
+  const edge=gesture?.type==='reconnect'?board.edges.find(e=>e.id===gesture.id):null,exclude=gesture?.type==='connect'?gesture.id:edge?edge[gesture.end==='source'?'target':'source']:null;
+  const match=nearestAttachment(point(ev),exclude,18/board.view.zoom);hoverAttachment=match;attachmentHint.hidden=!match;
+  if(match){attachmentHint.dataset.node=match.id;attachmentHint.dataset.side=match.side;attachmentHint.style.left=board.view.x+match.anchor.x*board.view.zoom+'px';attachmentHint.style.top=board.view.y+match.anchor.y*board.view.zoom+'px';attachmentHint.style.pointerEvents=gesture?'none':'auto';attachmentHint.setAttribute('aria-label','Connect '+board.nodes.find(n=>n.id===match.id).title+' at this edge position');}
+}
 function bind() {
+  attachmentHint=html('button');attachmentHint.type='button';attachmentHint.id='attachment-hint';attachmentHint.className='perimeter-port';attachmentHint.title='Drag to connect here; click to add a child; Alt-drag an edge to resize';attachmentHint.hidden=true;$('viewport').append(attachmentHint);
+  attachmentHint.onpointerdown=ev=>{if(ev.button!==0||!hoverAttachment)return;ev.preventDefault();ev.stopPropagation();const at={...hoverAttachment};select('node',at.id);checkpoint();gesture={type:'connect',id:at.id,side:at.side,offset:at.offset,start:point(ev),pointer:ev.pointerId};attachmentHint.hidden=true;$('viewport').setPointerCapture(ev.pointerId);};
+  $('viewport').addEventListener('pointerleave',()=>{if(!gesture)attachmentHint.hidden=true;});
   $('canvas-home').onclick=act(async()=>{
     if(!bridge.openDashboard)throw Error('The dashboard is available in the installed Zotero plugin.');
     finishLabel();await saveInlineNotes(true);await closeNote();await flush();await bridge.openDashboard();
@@ -925,42 +948,47 @@ function bind() {
     $('viewport').setPointerCapture(ev.pointerId);
   });
   $('viewport').addEventListener('pointermove', ev => {
+    if(!gesture||['connect','reconnect'].includes(gesture.type))showAttachment(ev);
     if (!gesture) return; const g = gesture, p = point(ev), n = board.nodes.find(n => n.id === g.id);
+    if(g.type==='elbow-corner'&&(g.moved||Math.hypot(p.x-g.start.x,p.y-g.start.y)*board.view.zoom>3)){const edge=board.edges.find(e=>e.id===g.id),first=g.points[0],last=g.points.at(-1),x=Math.round((g.points[1].x+p.x-g.start.x)/10)*10,y=Math.round((g.points[1].y+p.y-g.start.y)/10)*10;edge.routePoints=M.simplifyPoints([first,{x,y:first.y},{x,y},{x:last.x,y},last]).slice(1,-1);g.moved=true;render();}
+    if(g.type==='elbow-route'&&(g.moved||Math.hypot(p.x-g.start.x,p.y-g.start.y)*board.view.zoom>3)){const edge=board.edges.find(e=>e.id===g.id),axis=g.horizontal?'y':'x',delta=p[axis]-g.start[axis],points=M.clone(g.points);let value=g.points[g.index][axis]+delta;const snap=points.map(point=>point[axis]).find(v=>Math.abs(v-value)<12/board.view.zoom);value=snap??Math.round(value/10)*10;points[g.index][axis]=points[g.index+1][axis]=value;edge.routePoints=M.simplifyPoints(points).slice(1,-1);g.moved=true;render();}
     if(g.type==='route'&&(g.moved||Math.hypot(p.x-g.start.x,p.y-g.start.y)*board.view.zoom>3)){const edge=board.edges.find(e=>e.id===g.id);if(!g.moved){if(!edge.routePoints?.length)edge.routePoints=M.clone(g.route);if(g.insert)edge.routePoints.splice(g.index,0,g.point);g.moved=true;}edge.routePoints[g.index]={x:p.x,y:p.y};render();}
     if (g.type === 'pan') { board.view.x = g.x + ev.clientX - g.sx; board.view.y = g.y + ev.clientY - g.sy; renderView(); }
     if (g.type === 'move') {if(objectTap&&Math.hypot(ev.clientX-objectTap.x,ev.clientY-objectTap.y)>7)objectTap=null;const x=g.x+p.x-g.start.x,y=g.y+p.y-g.start.y;if(board.mode==='canvas'){n.x=x;n.y=y;}else (n.layoutOverrides||={})[M.layoutKey(board)]={x,y};render(); }
     if (g.type === 'resize') { const next = M.resize(g, g.direction, p.x - g.start.x, p.y - g.start.y); n.width = next.width; n.height = next.height; if (board.mode === 'canvas') { n.x = next.x; n.y = next.y; } render(); }
-    if(g.type==='reconnect'&&(g.moved||Math.hypot(p.x-g.start.x,p.y-g.start.y)*board.view.zoom>3)){const edge=board.edges.find(e=>e.id===g.id);if(edge){g.moved=true;edge[g.end]=null;edge[g.end+'Point']={x:p.x,y:p.y};render();}}
-    if(g.type==='connect'){const source=board.nodes.find(n=>n.id===g.id),position=M.positions(board).get(g.id),from={...source,...position},to={x:p.x,y:p.y,width:0,height:0};$('edges').querySelector('.preview')?.remove();$('edges').append(svg('path',{class:'preview',d:M.path(from,to,'elbow',g.side,g.side==='left'?'right':g.side==='top'?'bottom':g.side==='bottom'?'top':'left')}));}
+    if(g.type==='reconnect'&&(g.moved||Math.hypot(p.x-g.start.x,p.y-g.start.y)*board.view.zoom>3)){const edge=board.edges.find(e=>e.id===g.id);if(edge){g.moved=true;edge[g.end]=null;delete edge[g.end+'Offset'];edge[g.end+'Point']=hoverAttachment?{...hoverAttachment.anchor}:{x:p.x,y:p.y};render();}}
+    if(g.type==='connect'){const source=board.nodes.find(n=>n.id===g.id),position=M.positions(board).get(g.id),from={...source,...position},to={...(hoverAttachment?.anchor||p),width:0,height:0};$('edges').querySelector('.preview')?.remove();$('edges').append(svg('path',{class:'preview',d:M.path(from,to,'elbow',g.side,hoverAttachment?.side||(g.side==='left'?'right':g.side==='top'?'bottom':g.side==='bottom'?'top':'left'),[],g.offset)}));}
   });
   function endGesture(ev) {
     if (!gesture) return;
-    const g = gesture; gesture = null; let connected;
+    const g = gesture; gesture = null;if(attachmentHint)attachmentHint.hidden=true; let connected;
     if(ev.type==='pointercancel'){if(g.type!=='pan'){const previous=undo.pop();if(previous)board=M.clone(previous);}if($('viewport').hasPointerCapture(g.pointer))$('viewport').releasePointerCapture(g.pointer);render();return;}
     if(g.type==='move'&&Math.hypot(point(ev).x-g.start.x,point(ev).y-g.start.y)<2){undo.pop();if($('viewport').hasPointerCapture(g.pointer))$('viewport').releasePointerCapture(g.pointer);return;}
-    if(g.type==='route'&&!g.moved){undo.pop();if($('viewport').hasPointerCapture(g.pointer))$('viewport').releasePointerCapture(g.pointer);return;}
+    if(['route','elbow-route','elbow-corner'].includes(g.type)&&!g.moved){undo.pop();if($('viewport').hasPointerCapture(g.pointer))$('viewport').releasePointerCapture(g.pointer);return;}
     if(g.type==='reconnect'&&!g.moved&&Math.hypot(point(ev).x-g.start.x,point(ev).y-g.start.y)*board.view.zoom<3){undo.pop();if($('viewport').hasPointerCapture(g.pointer))$('viewport').releasePointerCapture(g.pointer);return;}
     if (g.type === 'connect' || g.type === 'reconnect') {
       // Handles sit above ports; ignore them while finding the drop destination.
       $('handles').style.display = 'none';
-      const element = document.elementFromPoint(ev.clientX, ev.clientY), target = element?.closest('.card')?.dataset.id;
+      const element = document.elementFromPoint(ev.clientX, ev.clientY);let target = element?.closest('.card')?.dataset.id;
       const targetEdge=!target&&document.elementsFromPoint(ev.clientX,ev.clientY).find(el=>el.matches('.edge-hit'))?.dataset.edge;
       $('handles').style.display = '';
-      const node = board.nodes.find(n => n.id === target), p = point(ev), ps = M.positions(board);
-      const side = node && (element.closest('.port')?.dataset.side || ['left', 'right', 'top', 'bottom'].sort((a, b) => { const aa = M.anchor({...node, ...ps.get(node.id)}, a), bb = M.anchor({...node, ...ps.get(node.id)}, b); return Math.hypot(p.x - aa.x, p.y - aa.y) - Math.hypot(p.x - bb.x, p.y - bb.y); })[0]);
+      let node = board.nodes.find(n => n.id === target), p = point(ev), ps = M.positions(board);
+      const precise=node?M.attachment({...node,...ps.get(node.id)},p):nearestAttachment(p,g.type==='connect'?g.id:null,18/board.view.zoom);
+      const destination=node||board.nodes.find(n=>n.id===precise?.id),side=precise?.side,offset=precise?.offset;
+      if(!node&&destination){node=destination;target=destination.id;}
       const edge = g.type === 'reconnect' && board.edges.find(e => e.id === g.id);
       const other = edge ? edge[g.end === 'source' ? 'target' : 'source'] : g.id;
-      if(targetEdge&&targetEdge!==g.id&&(!edge||targetEdge!==edge.id)){
+      if(!node&&targetEdge&&targetEdge!==g.id&&(!edge||targetEdge!==edge.id)){
         const junctionID=addJunction(targetEdge,p,false);
-        if(edge){const current=board.edges.find(e=>e.id===edge.id);current[g.end]=junctionID;delete current[g.end+'Point'];current[g.end+'Side']='left';current.hierarchy=false;connected=current;}
-        else{const created=M.edge(g.id,junctionID);created.sourceSide=g.side;created.targetSide='left';created.hierarchy=false;board.edges.push(created);connected=created;}
+        if(edge){const current=board.edges.find(e=>e.id===edge.id);current[g.end]=junctionID;delete current[g.end+'Point'];delete current[g.end+'Offset'];current[g.end+'Side']='left';current.hierarchy=false;connected=current;}
+        else{const created=M.edge(g.id,junctionID);created.sourceSide=g.side;if(g.offset!==undefined)created.sourceOffset=g.offset;created.targetSide='left';created.hierarchy=false;board.edges.push(created);connected=created;}
       } else if (node && target !== other && ev.type !== 'pointercancel') {
-        if (edge) { edge[g.end] = target; delete edge[g.end+'Point']; edge[g.end + 'Side'] = side;edge.hierarchy=g.originalHierarchy; connected = edge; }
-        else { const created = M.edge(g.id, target); created.sourceSide = g.side; created.targetSide = side; board.edges.push(created); connected = created; }
+        if (edge) { edge[g.end] = target; delete edge[g.end+'Point']; edge[g.end + 'Side'] = side;edge[g.end+'Offset']=offset;edge.hierarchy=g.originalHierarchy; connected = edge; }
+        else { const created = M.edge(g.id, target); created.sourceSide = g.side;if(g.offset!==undefined)created.sourceOffset=g.offset;created.targetSide = side;created.targetOffset=offset; board.edges.push(created); connected = created; }
       } else if(ev.type!=='pointercancel'&&!node){
         if(g.type==='connect'&&Math.hypot(p.x-g.start.x,p.y-g.start.y)*board.view.zoom<6){if(board.nodes.find(n=>n.id===g.id)?.junction)undo.pop();else createChild(board.nodes.find(n=>n.id===g.id),g.side);}
-        else if(edge){edge[g.end]=null;edge[g.end+'Point']={x:p.x,y:p.y};edge.hierarchy=false;}
-        else{const created=M.edge(g.id,null);created.sourceSide=g.side;created.targetPoint={x:p.x,y:p.y};created.hierarchy=false;created.style='elbow';board.edges.push(created);selection={kind:'edge',id:created.id};}
+        else if(edge){edge[g.end]=null;delete edge[g.end+'Offset'];edge[g.end+'Point']={x:p.x,y:p.y};edge.hierarchy=false;}
+        else{const created=M.edge(g.id,null);created.sourceSide=g.side;if(g.offset!==undefined)created.sourceOffset=g.offset;created.targetPoint={x:p.x,y:p.y};created.hierarchy=false;created.style='elbow';board.edges.push(created);selection={kind:'edge',id:created.id};}
       } else if(ev.type!=='pointercancel'&&g.type==='connect'&&target===g.id&&Math.hypot(p.x-g.start.x,p.y-g.start.y)*board.view.zoom<6&&!board.nodes.find(n=>n.id===g.id)?.junction){createChild(board.nodes.find(n=>n.id===g.id),g.side);}else undo.pop();
     }
     if ($('viewport').hasPointerCapture(g.pointer)) $('viewport').releasePointerCapture(g.pointer);
@@ -978,7 +1006,7 @@ function bind() {
   $('viewport').addEventListener('wheel', ev => {
     const body = ev.target.closest('.body,.file-preview');
     if (body && body.scrollHeight > body.clientHeight && !ev.ctrlKey && !ev.metaKey) return;
-    hideStyles();
+    hideStyles();if(attachmentHint)attachmentHint.hidden=true;
     ev.preventDefault();
     if (ev.ctrlKey || ev.metaKey) {
       const p = point(ev), r = $('viewport').getBoundingClientRect();

@@ -1,3 +1,4 @@
+const {edgeBox,hoverEdge}=require('./perimeter-helper.cjs');
 const {chromium} = require('playwright');
 const http = require('node:http');
 const fs = require('node:fs');
@@ -59,6 +60,7 @@ async function openText(page){if(await page.locator('#tools-text').isVisible())r
     b = await get(); assert.ok(b.nodes[1].width > initial.nodes[1].width + 60);
     assert.equal(await page.locator('.card').nth(1).locator('.resize').count(), 8);
     for (const direction of ['nw', 'ne', 'sw', 'se', 'n', 'e', 's', 'w']) {
+      await page.keyboard.down('Alt');
       const before = (await get()).nodes[1], handle = await page.locator('.card').nth(1).locator('.resize-' + direction).boundingBox();
       const x = handle.x + (handle.width > 20 ? 10 : handle.width / 2), y = handle.y + (handle.height > 20 ? 10 : handle.height / 2);
       const dx = direction.includes('w') ? -20 : direction.includes('e') ? 20 : 0, dy = direction.includes('n') ? -20 : direction.includes('s') ? 20 : 0;
@@ -68,14 +70,14 @@ async function openText(page){if(await page.locator('#tools-text').isVisible())r
       assert.equal(Math.round(after.height - before.height), /[ns]/.test(direction) ? 20 : 0);
       if (direction.includes('w')) assert.equal(after.x + after.width, before.x + before.width);
       if (direction.includes('n')) assert.equal(after.y + after.height, before.y + before.height);
-      await page.locator('#undo').click();
+      await page.keyboard.up('Alt');await page.locator('#undo').click();
     }
     const freeform = structuredClone(b.nodes);
     await page.locator('#mode-toggle').click(); await page.locator('[data-for=mode] [data-value=mindmap]').click(); await page.locator('#mode-toggle').click(); await page.locator('[data-for=mode] [data-value=canvas]').click();
     b = await get(); assert.deepEqual(b.nodes, freeform); assert.equal(b.edges.length, 1);
     await page.locator('#fit').click();
     // Drag a second connector from the source port to target card.
-    const port = await page.locator('.card').first().locator('.port[data-side=bottom]').boundingBox();
+    const port = await (await hoverEdge(page,page.locator('.card').first(),'bottom')).boundingBox();
     const target = await page.locator('.card').nth(1).locator('.heading').boundingBox();
     await page.mouse.move(port.x + 9, port.y + 9); await page.mouse.down(); await page.mouse.move(target.x + 40, target.y + 15, {steps: 10}); await page.mouse.up();
     assert.equal((await get()).edges.length, 2);
@@ -90,6 +92,8 @@ async function openText(page){if(await page.locator('#tools-text').isVisible())r
     assert.ok((await get()).nodes[0].layoutOverrides?.conceptmap);
     await page.locator('#reflow-layout').click();assert.equal((await get()).nodes[0].layoutOverrides?.conceptmap,undefined);
     await page.locator('#mode-toggle').click(); await page.locator('[data-for=mode] [data-value=canvas]').click();
+    // Leave a visible corridor between cards before testing label interaction.
+    const separated=await page.locator('.card').nth(1).locator('.heading').boundingBox();await page.mouse.move(separated.x+20,separated.y+10);await page.mouse.down();await page.mouse.move(separated.x+220,separated.y+10,{steps:6});await page.mouse.up();
     // Select an edge at a point on the SVG path and format it.
     const edgePoint = await page.locator('.edge-hit').first().evaluate(el => { const p = el.getPointAtLength(el.getTotalLength() * .5), m = el.getScreenCTM(); return {x: p.x * m.a + m.e, y: p.y * m.d + m.f}; });
     await page.locator('.edge-hit').first().dispatchEvent('contextmenu',{clientX:edgePoint.x,clientY:edgePoint.y});
@@ -128,11 +132,11 @@ async function openText(page){if(await page.locator('#tools-text').isVisible())r
     assert.equal(await page.locator('.edge-hollow').count(), 1);
     await page.locator('[data-tool=outline]').click(); await page.locator('#outlineWidth').fill('2'); await page.locator('#outlineWidth').press('Tab');
     assert.equal(await page.locator('.edge-outline').count(), 1);
-    assert.equal(await page.locator('.port').count(), 8);
+    assert.equal(await page.locator('.port').count(), 0);assert.equal(await page.locator('.perimeter-port').count(),1);
     await page.keyboard.press('Escape');
     // Drag the existing target to the bottom of the same card.
     const handle = await page.locator('.endpoint[data-end=target]').boundingBox();
-    const bottomPort = await page.locator('.card').nth(1).locator('.port[data-side=bottom]').boundingBox();
+    const bottomPort = await edgeBox(page,page.locator('.card').nth(1),'bottom');
     const beforeRetarget = await get();
     await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2); await page.mouse.down(); await page.mouse.move(bottomPort.x + bottomPort.width / 2, bottomPort.y + bottomPort.height / 2, {steps: 8}); await page.mouse.up();
     const retargeted = await get(); const edited = retargeted.edges.find(e => e.label === 'Supports');
@@ -143,7 +147,7 @@ async function openText(page){if(await page.locator('#tools-text').isVisible())r
     await page.locator('.edge-hit').first().dispatchEvent('contextmenu', {clientX: edgePoint.x, clientY: edgePoint.y});
     await page.keyboard.press('Escape');
     const sourceHandle = await page.locator('.endpoint[data-end=source]').boundingBox();
-    const thirdPort = await page.locator('.card').nth(2).locator('.port[data-side=right]').boundingBox();
+    const thirdPort = await edgeBox(page,page.locator('.card').nth(2),'right');
     await page.mouse.move(sourceHandle.x + sourceHandle.width / 2, sourceHandle.y + sourceHandle.height / 2); await page.mouse.down(); await page.mouse.move(thirdPort.x + thirdPort.width / 2, thirdPort.y + thirdPort.height / 2, {steps: 8}); await page.mouse.up();
     assert.equal((await get()).edges[0].source, third.id); assert.equal((await get()).edges[0].sourceSide, 'right');
     await page.locator('#undo').click(); assert.equal((await get()).edges[0].source, beforeRetarget.edges[0].source);
@@ -281,8 +285,8 @@ async function openText(page){if(await page.locator('#tools-text').isVisible())r
     // A second linked note uses the real connector gesture to request Related.
     await dropPage.evaluate(() => { window.dropNote = {title: 'Second note', text: 'Second source', kind: 'note', link: {libraryID: 1, key: 'NOTE5678'}}; const dt = new DataTransfer(); dt.setData('zotero/item', '43'); document.getElementById('viewport').dispatchEvent(new DragEvent('drop', {dataTransfer: dt, clientX: 700, clientY: 600, bubbles: true, cancelable: true})); });
     await dropPage.waitForFunction(() => window.CanvasApp.getBoard().nodes.length === 3);
-    const from = await dropPage.locator('.card').first().locator('.port[data-side=bottom]').boundingBox();
-    const to = await dropPage.locator('.card').nth(2).locator('.port[data-side=left]').boundingBox();
+    const from = await (await hoverEdge(dropPage,dropPage.locator('.card').first(),'bottom')).boundingBox();
+    const to = await edgeBox(dropPage,dropPage.locator('.card').nth(2),'left');
     await dropPage.mouse.move(from.x + from.width / 2, from.y + from.height / 2); await dropPage.mouse.down(); await dropPage.mouse.move(to.x + to.width / 2, to.y + to.height / 2, {steps: 10}); await dropPage.mouse.up();
     await dropPage.waitForFunction(() => window.relatedCalls?.length === 1);
     assert.deepEqual(await dropPage.evaluate(() => window.relatedCalls[0]), [{libraryID: 1, key: 'ABCD1234'}, {libraryID: 1, key: 'NOTE5678'}]);

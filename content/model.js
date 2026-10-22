@@ -36,10 +36,10 @@
       if(dot.junctionRole==='spine')dot.organization={...target.organization};
     }
     const upstream = {...clone(downstream), id: id(), target: dot.id, targetSide: forward[0], label: '', arrow: downstream.arrow === 'start' || downstream.arrow === 'both' ? 'start' : 'none'};
-    delete upstream.targetPoint; delete upstream.routePoints; delete upstream.aiEvidence;
+    delete upstream.targetPoint; delete upstream.targetOffset; delete upstream.routePoints; delete upstream.aiEvidence;
     downstream.source = dot.id; downstream.sourceSide = forward[1];
     downstream.arrow = downstream.arrow === 'both' ? 'end' : downstream.arrow === 'start' ? 'none' : downstream.arrow;
-    delete downstream.sourcePoint; delete downstream.routePoints;
+    delete downstream.sourcePoint; delete downstream.sourceOffset; delete downstream.routePoints;
     if(dot.junctionRole==='spine')next.nodes.splice(next.nodes.findIndex(n=>n.id===target.id),0,dot);else next.nodes.push(dot);
     next.edges.push(upstream);
     return {board: validate(next), junctionID: dot.id, upstreamID: upstream.id, downstreamID: downstream.id};
@@ -111,6 +111,7 @@
         || !['straight', 'curved', 'elbow'].includes(e.style) || !colour(e.colour) || !finite(e.thickness, 1, 12)
         || !['none', 'start', 'end', 'both'].includes(e.arrow) || typeof e.label !== 'string' || typeof e.hierarchy !== 'boolean') throw Error('Invalid connector data.');
       for (const key of ['sourceSide', 'targetSide']) if (e[key] !== undefined && !['top', 'right', 'bottom', 'left'].includes(e[key])) throw Error('Invalid connector attachment side.');
+      for(const end of ['source','target'])if(e[end+'Offset']!==undefined&&(!finite(e[end+'Offset'],0,1)||e[end]===null||!e[end+'Side']))throw Error('Invalid connector perimeter position.');
       if ((e.pattern !== undefined && !['solid', 'dashed', 'dotted'].includes(e.pattern))
         || (e.fillMode !== undefined && !['filled', 'outline'].includes(e.fillMode))
         || (e.outlineWidth !== undefined && !finite(e.outlineWidth, 0, 6))
@@ -182,38 +183,55 @@
     n.x=side==='left'?parent.x-n.width-100:side==='right'?parent.x+parent.width+100:parent.x+(parent.width-n.width)/2;
     n.y=side==='top'?parent.y-n.height-100:side==='bottom'?parent.y+parent.height+100:parent.y+(parent.height-n.height)/2;return n;
   }
-  function anchor(n, side) {
-    return {x: n.x + (side === 'left' ? 0 : side === 'right' ? n.width : n.width / 2), y: n.y + (side === 'top' ? 0 : side === 'bottom' ? n.height : n.height / 2)};
+  function anchor(n, side, offset=.5) {
+    const t=Math.max(0,Math.min(1,offset));
+    if(n.shape==='ellipse'||n.shape==='diamond'){const k=2*t-1,factor=n.shape==='ellipse'?Math.sqrt(Math.max(0,1-k*k)):1-Math.abs(k);return ['top','bottom'].includes(side)?{x:n.x+n.width*t,y:n.y+n.height/2+(side==='top'?-1:1)*n.height/2*factor}:{x:n.x+n.width/2+(side==='left'?-1:1)*n.width/2*factor,y:n.y+n.height*t};}
+    return {x: n.x + (side === 'left' ? 0 : side === 'right' ? n.width : n.width * t), y: n.y + (side === 'top' ? 0 : side === 'bottom' ? n.height : n.height * t)};
+  }
+  function attachment(n,p){
+    if(n.shape==='ellipse'||n.shape==='diamond'){
+      let dx=(p.x-n.x-n.width/2)/(n.width/2),dy=(p.y-n.y-n.height/2)/(n.height/2);if(!dx&&!dy)dy=-1;
+      const scale=n.shape==='ellipse'?Math.hypot(dx,dy):Math.abs(dx)+Math.abs(dy);dx/=scale;dy/=scale;
+      const side=Math.abs(dy)>=Math.abs(dx)?dy<0?'top':'bottom':dx<0?'left':'right';return {side,offset:Math.max(0,Math.min(1,(['top','bottom'].includes(side)?dx:dy)/2+.5))};
+    }
+    const clamp=v=>Math.max(0,Math.min(1,v)),candidates=[{side:'top',offset:clamp((p.x-n.x)/n.width)},{side:'bottom',offset:clamp((p.x-n.x)/n.width)},{side:'left',offset:clamp((p.y-n.y)/n.height)},{side:'right',offset:clamp((p.y-n.y)/n.height)}];
+    return candidates.reduce((best,row)=>{const a=anchor(n,row.side,row.offset),distance=Math.hypot(a.x-p.x,a.y-p.y);return distance<best.distance?{...row,distance}:best;},{distance:Infinity});
+  }
+  function simplifyPoints(points){const result=[];for(const p of points){const last=result.at(-1);if(last&&Math.hypot(last.x-p.x,last.y-p.y)<.01)continue;while(result.length>1){const a=result.at(-2),b=result.at(-1);if(Math.abs((b.x-a.x)*(p.y-b.y)-(b.y-a.y)*(p.x-b.x))>.01)break;if((b.x-a.x)*(p.x-b.x)+(b.y-a.y)*(p.y-b.y)<0)break;result.pop();}result.push({...p});}return result;}
+  function elbowPoints(a,c,sourceSide='right',targetSide='left',route=[],sourceOffset=.5,targetOffset=.5){
+    const first=anchor(a,sourceSide,sourceOffset),last=anchor(c,targetSide,targetOffset),horizontal=side=>['left','right'].includes(side);let points=[first];
+    if(route.length){for(const p of [...route,last]){points.push({x:p.x,y:points.at(-1).y},{...p});}}
+    else if(horizontal(sourceSide)&&horizontal(targetSide)){const mid=(first.x+last.x)/2;points.push({x:mid,y:first.y},{x:mid,y:last.y},last);}
+    else if(!horizontal(sourceSide)&&!horizontal(targetSide)){const mid=(first.y+last.y)/2;points.push({x:first.x,y:mid},{x:last.x,y:mid},last);}
+    else points.push(horizontal(sourceSide)?{x:last.x,y:first.y}:{x:first.x,y:last.y},last);
+    return simplifyPoints(points);
   }
   function edgeGeometry(b,e,a,c){
-    if(!['mindmap','conceptmap'].includes(b.mode)||e.source===null||e.target===null)return {style:e.style,sourceSide:e.sourceSide||'right',targetSide:e.targetSide||'left',routePoints:e.routePoints||[]};
-    if(b.mode==='mindmap'&&e.hierarchy&&!a.layoutOverrides?.[layoutKey(b)]&&!c.layoutOverrides?.[layoutKey(b)]){
+    if(e.source===null||e.target===null||!['mindmap','conceptmap'].includes(b.mode)&&e.routePoints?.length)return {style:e.style,sourceSide:e.sourceSide||'right',targetSide:e.targetSide||'left',routePoints:e.routePoints||[]};
+    if(b.mode==='mindmap'&&e.hierarchy&&e.sourceOffset===undefined&&e.targetOffset===undefined&&!a.layoutOverrides?.[layoutKey(b)]&&!c.layoutOverrides?.[layoutKey(b)]){
       const vertical=b.mindmapDirection==='vertical',forward=vertical?a.y<=c.y:a.x<=c.x;
       return {style:'straight',sourceSide:vertical?(forward?'bottom':'top'):(forward?'right':'left'),targetSide:vertical?(forward?'top':'bottom'):(forward?'left':'right'),routePoints:[]};
     }
-    const pairs=b.mindmapDirection==='vertical'?[['bottom','top'],['top','bottom'],['right','left'],['left','right']]:[['right','left'],['left','right'],['bottom','top'],['top','bottom']];
+    const dx=c.x+c.width/2-a.x-a.width/2,dy=c.y+c.height/2-a.y-a.height/2;
+    let pairs=Math.abs(dy)>Math.abs(dx)?[[dy>=0?'bottom':'top',dy>=0?'top':'bottom'],[dx>=0?'right':'left',dx>=0?'left':'right']]:[[dx>=0?'right':'left',dx>=0?'left':'right'],[dy>=0?'bottom':'top',dy>=0?'top':'bottom']];
+    if(a.x<c.x+c.width&&c.x<a.x+a.width&&Math.abs(dy)>=(a.height+c.height)/2)pairs=[pairs.find(pair=>['top','bottom'].includes(pair[0]))];
+    else if(a.y<c.y+c.height&&c.y<a.y+a.height&&Math.abs(dx)>=(a.width+c.width)/2)pairs=[pairs.find(pair=>['left','right'].includes(pair[0]))];
     const [sourceSide,targetSide]=pairs.reduce((best,pair)=>{
       const p=anchor(a,pair[0]),q=anchor(c,pair[1]),distance=(p.x-q.x)**2+(p.y-q.y)**2;
       return distance<best.distance?{pair,distance}:best;
     },{pair:pairs[0],distance:Infinity}).pair;
     return {style:b.mode==='mindmap'?'straight':e.style,sourceSide:e.sourceSide||sourceSide,targetSide:e.targetSide||targetSide,routePoints:b.mode==='mindmap'?[]:e.routePoints||[]};
   }
-  function edgePath(b,e,a,c){const route=edgeGeometry(b,e,a,c);return path(a,c,route.style,route.sourceSide,route.targetSide,route.routePoints);}
-  function path(a, c, style, sourceSide = 'right', targetSide = 'left', routePoints = []) {
-    const {x: x1, y: y1} = anchor(a, sourceSide), {x: x2, y: y2} = anchor(c, targetSide);
+  function edgePath(b,e,a,c){const route=edgeGeometry(b,e,a,c);return path(a,c,route.style,route.sourceSide,route.targetSide,route.routePoints,e.sourceOffset,e.targetOffset);}
+  function path(a, c, style, sourceSide = 'right', targetSide = 'left', routePoints = [], sourceOffset=.5, targetOffset=.5) {
+    const {x: x1, y: y1} = anchor(a, sourceSide,sourceOffset), {x: x2, y: y2} = anchor(c, targetSide,targetOffset);
+    if(style==='elbow'){const points=elbowPoints(a,c,sourceSide,targetSide,routePoints,sourceOffset,targetOffset);return points.map((p,i)=>i?(Math.abs(p.y-points[i-1].y)<.01?'H '+p.x:'V '+p.y):'M '+p.x+' '+p.y).join(' ');}
     if(routePoints.length){
       const points=[{x:x1,y:y1},...routePoints,{x:x2,y:y2}];let d=`M ${x1} ${y1}`;
       if(style==='curved'){for(let i=1;i<points.length-1;i++){const p=points[i],next=points[i+1];d+=` Q ${p.x} ${p.y} ${(p.x+next.x)/2} ${(p.y+next.y)/2}`;}return d+` L ${x2} ${y2}`;}
       for(const p of points.slice(1))d+=style==='elbow'?` H ${p.x} V ${p.y}`:` L ${p.x} ${p.y}`;return d;
     }
-    const mid = (x1 + x2) / 2;
     if (style === 'straight') return `M ${x1} ${y1} L ${x2} ${y2}`;
-    const horizontal = side => ['left', 'right'].includes(side);
-    if (style === 'elbow') {
-      if (horizontal(sourceSide) && horizontal(targetSide)) return `M ${x1} ${y1} H ${mid} V ${y2} H ${x2}`;
-      if (!horizontal(sourceSide) && !horizontal(targetSide)) return `M ${x1} ${y1} V ${(y1 + y2) / 2} H ${x2} V ${y2}`;
-      return horizontal(sourceSide) ? `M ${x1} ${y1} H ${x2} V ${y2}` : `M ${x1} ${y1} V ${y2} H ${x2}`;
-    }
     const distance = Math.max(50, Math.hypot(x2 - x1, y2 - y1) / 2);
     const offset = side => ({left: [-distance, 0], right: [distance, 0], top: [0, -distance], bottom: [0, distance]}[side]);
     const s = offset(sourceSide), t = offset(targetSide);
@@ -265,7 +283,7 @@
     return [['supports','Supporting link','SL ✅','#287b63','solid'],['contradicts','Critical link','❌CL','#b34747','dashed'],['extends','Extends','Extends','#4679a3','solid'],['example','Example of','Example of','#967536','dotted']].map(([id,title,label,colour,pattern])=>meaning(id,title,{label,colour,pattern,style:'curved',thickness:3,arrow:'end',hierarchy:false}));
   }
   function meanings(custom=[]){const values=new Map(defaultMeanings().map(type=>[type.id,type]));for(const type of custom)values.set(type.id,meaning(type.id,type.title,type));return [...values.values()];}
-  const api = {setDefaults, clone, board, node, edge, junction, splitEdge, endpoint, extraRects, formatGuides, layoutKey, child, validate, layout, positions, path, anchor, edgeGeometry, edgePath, droppedIDs, labelPalette, resize, bounds, meaning, meaningFields, defaultMeanings, meanings, annotationLabel, referenceTitle};
+  const api = {setDefaults, clone, board, node, edge, junction, splitEdge, endpoint, attachment, simplifyPoints, elbowPoints, extraRects, formatGuides, layoutKey, child, validate, layout, positions, path, anchor, edgeGeometry, edgePath, droppedIDs, labelPalette, resize, bounds, meaning, meaningFields, defaultMeanings, meanings, annotationLabel, referenceTitle};
   if (typeof module !== 'undefined') module.exports = api;
   else root.CanvasModel = api;
 })(globalThis);

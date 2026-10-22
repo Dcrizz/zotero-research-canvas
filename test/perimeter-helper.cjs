@@ -1,0 +1,3 @@
+async function edgeBox(page,card,side,offset=.5){const r=await card.boundingBox(),x=side==='left'?r.x:side==='right'?r.x+r.width:r.x+r.width*offset,y=side==='top'?r.y:side==='bottom'?r.y+r.height:r.y+r.height*offset;return {x:x-8,y:y-8,width:16,height:16};}
+async function hoverEdge(page,card,side,offset=.5){const r=await edgeBox(page,card,side,offset),x=r.x+8+(side==='left'?8:side==='right'?-8:0),y=r.y+8+(side==='top'?8:side==='bottom'?-8:0);await page.mouse.move(x,y);await page.locator('#attachment-hint').waitFor({state:'visible'});return page.locator('#attachment-hint');}
+module.exports={edgeBox,hoverEdge};

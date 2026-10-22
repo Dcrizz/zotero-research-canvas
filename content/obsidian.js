@@ -60,6 +60,7 @@
             ends[end]=id;warnings.add('Loose connector endpoints use tiny editable anchor cards in Obsidian.');
           }
         }
+        if(['source','target'].some(end=>e[end+'Offset']!==undefined&&e[end+'Offset']!==.5))warnings.add('Custom perimeter positions use the middle of their attachment side in Obsidian; exact positions remain in the Zotero Canvas original.');
         const geometry=M.edgeGeometry(board,e,M.endpoint(e,'source',placed),M.endpoint(e,'target',placed));
         edges.push({id:e.id,fromNode:ends.source,fromSide:geometry.sourceSide,fromEnd:['start','both'].includes(e.arrow)?'arrow':'none',toNode:ends.target,toSide:geometry.targetSide,toEnd:['end','both'].includes(e.arrow)?'arrow':'none',color:e.colour,label:e.label||''});
         if(e.routePoints?.length||e.pattern&&e.pattern!=='solid'||e.outlineWidth||e.thickness!==2||e.style!=='curved')warnings.add('Connector labels, colours and endpoints are retained; routing, thickness and dash styles use Obsidian defaults.');
